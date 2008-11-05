@@ -1,0 +1,7 @@
+(optimize-level 3)
+(parameterize ([compile-profile #t])
+  (load "json.ss"))
+(profile-clear)
+(import (json))
+(do-tests)
+(profile-dump-html)
