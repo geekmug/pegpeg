@@ -37,6 +37,7 @@
     string->number
     printf
     object->string
+    symbol->list
     peg-trace
   )
   (import (rnrs)
@@ -91,6 +92,10 @@
       (call-with-string-output-port
         (lambda (port)
           (write object port)))))
+
+  (define symbol->list
+    (lambda (sym)
+      (string->list (symbol->string sym))))
 
   (define peg-trace
     (let ([trace #f])
@@ -312,19 +317,22 @@
                                [entry (assq 'nt* memo)])
                           (if entry
                             (cdr entry)
-                            (let ([result ((peg-nt ((nt-sym* nt-type*) ...)
-                                             (nt*-expr* (let () nt*-body** ...)) ...)
-                                            stream)])
-                              (peg-stream-memo-set! stream `(('nt* . ,result) ,@memo))
+                            (let ([result
+                                   ((peg-nt ((nt-sym* nt-type*) ...)
+                                      (nt*-expr* (let () nt*-body** ...)) ...)
+                                    stream)])
+                              (peg-stream-memo-set! stream
+                                `(('nt* . ,result) ,@memo))
                               result)))])
                    (peg-trace-pop "~s~%" result)
                    result)))
              ...
              (lambda (generator)
                (let ([nt-start (car `(,nt* ...))])
-                 (let ([result (if (peg-stream? generator)
-                                 (nt-start generator)
-                                 (nt-start (generator->peg-stream generator)))])
+                 (let ([result
+                        (if (peg-stream? generator)
+                          (nt-start generator)
+                          (nt-start (generator->peg-stream generator)))])
                    (if (peg-parse-error? result)
                      result
                      ((peg-body-result-value result)))))))])))
@@ -341,7 +349,8 @@
        (lambda (stream)
          (let ([result0 (peg-expr nt-bindings nt-expr0 stream)])
            (if (peg-parse-error? result0)
-             (let ([result1 ((peg-nt nt-bindings (nt-expr1 nt-body1) ...) stream)])
+             (let ([result1
+                    ((peg-nt nt-bindings (nt-expr1 nt-body1) ...) stream)])
                (if (peg-parse-error? result1)
                  (if (peg-parse-error>? result0 result1)
                    result0
@@ -363,12 +372,11 @@
                 [(char=? (car binding) (car sym))
                  (match? (cdr binding) (cdr sym))]
                 [else #f])))
-          (let ([symls (string->list (symbol->string sym))])
+          (let ([symls (symbol->list sym))])
             (call/cc
               (lambda (break)
                 (map (lambda (binding)
-                       (if (match? (string->list (symbol->string (car binding)))
-                                   symls)
+                       (if (match? (symbol->list (car binding))) symls
                          (break (cadr binding))))
                      nt-bindings)
                 #f)))))
