@@ -3,5 +3,5 @@
   (load "json.ss"))
 (profile-clear)
 (import (json))
-(do-tests)
+(json-do-tests)
 (profile-dump-html)

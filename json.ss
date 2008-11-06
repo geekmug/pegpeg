@@ -194,6 +194,12 @@
 
   (define json-do-tests
     (lambda ()
-      (json-read (open-file-input-port "tests/25.js") "tests/25.js" 1 1)
+      (json-read (open-file-input-port "tests/1600.js") "tests/1600.js" 1 1)
       #f))
 )
+
+(import (json))
+(define json-do-tests
+  (lambda ()
+    (json-read (open-file-input-port "tests/1600.js") "tests/1600.js" 1 1)
+    #f))
