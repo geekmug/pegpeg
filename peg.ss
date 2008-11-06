@@ -1,4 +1,4 @@
-;;; Parsing Expression Grammar (PEG) Parser Generator
+;;; Parsing Expression Grammar Parsing Expression Generator (PEGPEG)
 ;;; Copyright (c) 2008 Scott A. Dial (scott@scottdial.com)
 ;;; All rights reserved.
 ;;; 
@@ -38,10 +38,12 @@
     printf
     object->string
     symbol->list
+    peg-<=?
+    peg->=?
     peg-trace
   )
   (import (rnrs)
-          (only (scheme) char=? string->number))
+          (only (scheme) char=? char<=? char>=? string->number))
 
   (define syntax-violation
     (case-lambda
@@ -97,6 +99,18 @@
     (lambda (sym)
       (string->list (symbol->string sym))))
 
+  (define peg-<=?
+    (lambda (a b)
+      (cond
+        [(and (char? a) (char? b)) (char<=? a b)]
+        [else (<= a b)])))
+
+  (define peg->=?
+    (lambda (a b)
+      (cond
+        [(and (char? a) (char? b)) (char>=? a b)]
+        [else (>= a b)])))
+
   (define peg-trace
     (let ([trace #f])
       (case-lambda
@@ -126,8 +140,8 @@
     peg-parse-error-message
     peg-parse-error-stream
   )
-  (import (peg helpers) (rnrs))
-;          (only (scheme) trace-define-syntax trace-lambda trace-let))
+  (import (peg helpers) (rnrs)
+          (only (scheme) trace-define-syntax trace-lambda trace-let))
 
   (define-record-type peg-stream
     (fields
@@ -372,15 +386,15 @@
                 [(char=? (car binding) (car sym))
                  (match? (cdr binding) (cdr sym))]
                 [else #f])))
-          (let ([symls (symbol->list sym))])
+          (let ([symls (symbol->list sym)])
             (call/cc
               (lambda (break)
                 (map (lambda (binding)
-                       (if (match? (symbol->list (car binding))) symls
+                       (if (match? (symbol->list (car binding)) symls)
                          (break (cadr binding))))
                      nt-bindings)
                 #f)))))
-      (syntax-case x (* + ? & ! / @ <-)
+      (syntax-case x (* + ? & ! / @ <- -)
         ; Zero-or-more operator
         [(_ nt-bindings (* nt-expr0 nt-expr1 ...) stream)
          #`(let ([expr (lambda (st)
@@ -459,7 +473,36 @@
                    `((symbol . ,(lambda () values)) ,@bindings)
                    (peg-result-stream result)))))]
 
-
+        ; Range match
+        [(_ nt-bindings (start - stop) stream)
+         (let ([startchar (syntax->datum #'start)]
+               [stopchar (syntax->datum #'stop)])
+           (if (not (peg-<=? startchar stopchar))
+             (syntax-violation 'peg-parser
+               (string-append "invalid match range: "
+                 (object->string startchar)
+                 " - "
+                 (object->string stopchar))
+                #'nt-expr)
+             #`(let ([v (peg-stream-value stream)])
+                 (if (eof-object? v)
+                   (make-peg-parse-error #f
+                     #,(string-append
+                         "unexpected end-of-file, expected value in range: "
+                         (list->string `(,startchar #\- ,stopchar)))
+                     stream)
+                   (if (and (peg->=? v start) (peg-<=? v stop))
+                     (make-peg-result '() ((peg-stream-next stream)))
+                     (make-peg-parse-error #f
+                       (string-append
+                         "unexpected value or character ("
+                         (object->string v)
+                          #,(string-append
+                              "), expected value in range: "
+                              (object->string startchar)
+                              " - "
+                              (object->string stopchar)))
+                       stream))))))]
 
         ; Expand sequences
         [(_ nt-bindings (nt-expr) stream)
@@ -474,11 +517,11 @@
                    result1
                    (peg-result-merge result0 result1)))))]
 
-        ; Any-character match
+        ; Any match
         [(_ nt-bindings @ stream)
          #`(if (eof-object? (peg-stream-value stream))
              (make-peg-parse-error #f
-               "unexpected end-of-file, expected any character"
+               "unexpected end-of-file, expected any value or character"
                stream)
              (make-peg-result '() ((peg-stream-next stream))))]
 
@@ -504,7 +547,7 @@
                   (make-peg-result '() ((peg-stream-next stream)))
                   (make-peg-parse-error #f
                     (string-append
-                      "unexpected character ("
+                      "unexpected value or character ("
                       (list->string `(,(peg-stream-value stream)))
                       #,(string-append
                           "), expected: "
@@ -533,16 +576,35 @@
                         `((nt-expr . ,(peg-body-result-value result)))
                         (peg-body-result-stream result))))))]
 
-           ; No other base values are supported
+           ; Match a scheme value
            [else
-            (syntax-violation 'peg-parser
-              (string-append "invalid PEG expression: "
-                (object->string (syntax->datum #'nt-expr)))
-              #'nt-expr)])])))
+            #`(if (eof-object? (peg-stream-value stream))
+                (make-peg-parse-error #f
+                  #,(string-append
+                      "unexpected end-of-file, expected: "
+                      (object->string (syntax->datum #'nt-expr)))
+                  stream)
+                (if (eqv? (peg-stream-value stream) nt-expr)
+                  (make-peg-result '() ((peg-stream-next stream)))
+                  (make-peg-parse-error #f
+                    (string-append
+                      "unexpected value or character ("
+                      (object->string (peg-stream-value stream))
+                      #,(string-append
+                          "), expected: "
+                          (object->string (syntax->datum #'nt-expr)))))
+                    stream))])])))
+
+;           ; No other base values are supported
+;           [else
+;            (syntax-violation 'peg-parser
+;              (string-append "invalid PEG expression: "
+;                (object->string (syntax->datum #'nt-expr)))
+;              #'nt-expr)])])))
 
   (define-syntax ~peg-body
     (lambda (x)
-      (syntax-case x (* + ? & ! / @ <-)
+      (syntax-case x (* + ? & ! / @ <- -)
         ; Zero-or-more operator
         [(_ result (* nt-expr0 ...) nt-body)
          #`(~peg-body result (nt-expr0 ...) nt-body)]
@@ -572,6 +634,10 @@
          #`(let ([symbol (peg-result-bindings-lookup result 'symbol)])
              nt-body)]
 
+        ; Range match
+        [(_ result (start - stop) nt-body)
+         #'nt-body]
+
         ; Expand sequences
         [(_ result (nt-expr) nt-body)
          #`(~peg-body result nt-expr nt-body)]
@@ -579,7 +645,7 @@
          #`(~peg-body result nt-expr0
              (~peg-body result (nt-expr1 ...) nt-body))]
 
-        ; Any-character match
+        ; Any match
         [(_ result @ nt-body)
          #'nt-body]
 

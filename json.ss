@@ -25,8 +25,10 @@
 
 (library (json)
   (export
+    json-parser
     json-read
     json-write
+    json-do-tests
   )
   (import (rnrs) (peg)
           (only (scheme) fxsll string->number))
@@ -36,90 +38,87 @@
       (fxsll fx1 fx2)))
 
   (define json-parser
-    (let ()
-      (peg-trace #t)
-      (peg-parser
-        [(obj Object) (pr Pair) (ary Array) (val Value) (str String)
-         (num Number) (strchar StringChar) (hd HexDigit) (int Integer)
-         (frac Fraction) (exp Exponent) (dgt Digit) (nzdgt NonzeroDigit)
-         (ws Whitespace)]
-        (Value
-          ["true" #t]
-          ["false" #f]
-          ["null" (if #f #f)]
-          [str str]
-          [num num]
-          [obj obj]
-          [ary ary])
-        (Object
-          [("{" (* ws) (? pr1 (* (* ws) "," (* ws) pr2)) (* ws) "}")
-           (cond
-             [(peg-unmatched? pr1) '()]
-             [(peg-unmatched? pr2) `(,pr1)]
-             [else `(,pr1 ,@pr2)])])
-        (Pair
-          [(str (* ws) ":" (* ws) val) `(,str . ,val)])
-        (Array
-          [("[" (* ws) (? val1 (* (* ws) "," (* ws) val2)) (* ws) "]")
-           (cond
-             [(peg-unmatched? val1) (vector)]
-             [(peg-unmatched? val2) (list->vector `(,val1))]
-             [else (list->vector `(,val1 ,@val2))])])
-        (String
-          [("\"" (* strchar) "\"")
-           (if (peg-unmatched? strchar)
-             ""
-             (list->string strchar))])
-        (StringChar
-          [((! (/ "\"" "\\")) (c <- @)) (car c)]
-          ["\\\"" #\"]
-          ["\\\\" #\\]
-          ["\\/" #\/]
-          ["\\b" (integer->char 8)] ; backspace
-          ["\\f" (integer->char 12)] ; formfeed
-          ["\\n" (integer->char 10)] ; newline
-          ["\\r" (integer->char 13)] ; carriage return
-          ["\\t" (integer->char 9)] ; horizontal tab
-          [("\\u" hd1 hd2 hd3 hd4)
-           (integer->char
-             (+ (fxarithmetic-shift-left hd1 24)
-                (fxarithmetic-shift-left hd2 16)
-                (fxarithmetic-shift-left hd3  8)
-                hd4))])
-        (HexDigit
-          ["0" 0] ["1" 1] ["2" 2] ["3" 3] ["4" 4]
-          ["5" 5] ["6" 6] ["7" 7] ["8" 8] ["9" 9]
-          [(/ "a" "A") 10] [(/ "b" "B") 11]
-          [(/ "c" "C") 12] [(/ "d" "D") 13]
-          [(/ "e" "E") 14] [(/ "f" "F") 15])
-        (Number
-          [(int frac exp) (* (+ int frac) (expt 10 exp))]
-          [(int frac) (+ int frac)]
-          [(int exp) (* int (expt 10 exp))]
-          [int int])
-        (Integer
-          [(nzdgt (+ dgt))
-           (string->number (list->string `(,nzdgt ,@dgt)))]
-          [dgt (string->number (list->string `(,dgt)))]
-          [("-" nzdgt (+ dgt))
-           (- (string->number (list->string `(,nzdgt ,@dgt))))]
-          [("-" dgt) (- (string->number (list->string `(,dgt))))])
-        (Fraction
-          [("." (+ dgt))
-           (string->number (list->string `(#\. ,@dgt)))])
-        (Exponent
-          [((/ "e" "e+" "E" "E+") (+ dgt))
-           (string->number (list->string dgt))]
-          [((/ "e-" "E-") (+ dgt))
-           (- (string->number (list->string dgt)))])
-        (Digit
-          ["0" #\0]
-          [nzdgt nzdgt])
-        (NonzeroDigit
-          ["1" #\1] ["2" #\2] ["3" #\3] ["4" #\4]
-          ["5" #\5] ["6" #\6] ["7" #\7] ["8" #\8] ["9" #\9])
-        (Whitespace
-          [(/ " " "\t" "\r" "\n") #t]))))
+    (peg-parser
+      [(obj Object) (pr Pair) (ary Array) (val Value) (str String)
+       (num Number) (strchar StringChar) (hd HexDigit) (int Integer)
+       (frac Fraction) (exp Exponent) (dgt Digit) (nzdgt NonzeroDigit)
+       (ws Whitespace)]
+      (Value
+        ["true" #t]
+        ["false" #f]
+        ["null" (if #f #f)]
+        [str str]
+        [num num]
+        [obj obj]
+        [ary ary])
+      (Object
+        [("{" (* ws) (? pr1 (* (* ws) "," (* ws) pr2)) (* ws) "}")
+         (cond
+           [(peg-unmatched? pr1) '()]
+           [(peg-unmatched? pr2) `(,pr1)]
+           [else `(,pr1 ,@pr2)])])
+      (Pair
+        [(str (* ws) ":" (* ws) val) `(,str . ,val)])
+      (Array
+        [("[" (* ws) (? val1 (* (* ws) "," (* ws) val2)) (* ws) "]")
+         (cond
+           [(peg-unmatched? val1) (vector)]
+           [(peg-unmatched? val2) (list->vector `(,val1))]
+           [else (list->vector `(,val1 ,@val2))])])
+      (String
+        [("\"" (* strchar) "\"")
+         (if (peg-unmatched? strchar)
+           ""
+           (list->string strchar))])
+      (StringChar
+        [((! (/ "\"" "\\")) (c <- @)) (car c)]
+        ["\\\"" #\"]
+        ["\\\\" #\\]
+        ["\\/" #\/]
+        ["\\b" (integer->char 8)]  ; backspace
+        ["\\f" (integer->char 12)] ; formfeed
+        ["\\n" (integer->char 10)] ; newline
+        ["\\r" (integer->char 13)] ; carriage return
+        ["\\t" (integer->char 9)]  ; horizontal tab
+        [("\\u" hd1 hd2 hd3 hd4)
+         (integer->char
+           (+ (fxarithmetic-shift-left hd1 24)
+              (fxarithmetic-shift-left hd2 16)
+              (fxarithmetic-shift-left hd3  8)
+              hd4))])
+      (HexDigit
+        [(digit <- (#\0 - #\9))
+         (- (char->integer (car digit)) (char->integer #\0))]
+        [(/ "a" "A") 10] [(/ "b" "B") 11]
+        [(/ "c" "C") 12] [(/ "d" "D") 13]
+        [(/ "e" "E") 14] [(/ "f" "F") 15])
+      (Number
+        [(int frac exp) (* (+ int frac) (expt 10 exp))]
+        [(int frac) (+ int frac)]
+        [(int exp) (* int (expt 10 exp))]
+        [int int])
+      (Integer
+        [(nzdgt (+ dgt))
+         (string->number (list->string `(,nzdgt ,@dgt)))]
+        [dgt (string->number (list->string `(,dgt)))]
+        [("-" nzdgt (+ dgt))
+         (- (string->number (list->string `(,nzdgt ,@dgt))))]
+        [("-" dgt) (- (string->number (list->string `(,dgt))))])
+      (Fraction
+        [("." (+ dgt))
+         (string->number (list->string `(#\. ,@dgt)))])
+      (Exponent
+        [((/ "e" "e+" "E" "E+") (+ dgt))
+         (string->number (list->string dgt))]
+        [((/ "e-" "E-") (+ dgt))
+         (- (string->number (list->string dgt)))])
+      (Digit
+        ["0" #\0]
+        [nzdgt nzdgt])
+      (NonzeroDigit
+        [(digit <- (#\1 - #\9)) (car digit)])
+      (Whitespace
+        [(/ " " "\t" "\r" "\n") #t])))
 
   (define ~json-read
     (lambda (port/str name line col)
@@ -192,11 +191,9 @@
     (case-lambda
       [(object) (~json-write (current-output-port) object)]
       [(object port) (~json-write port object)]))
+
+  (define json-do-tests
+    (lambda ()
+      (json-read (open-file-input-port "tests/25.js") "tests/25.js" 1 1)
+      #f))
 )
-
-(import (json))
-
-(define do-tests
-  (lambda ()
-    (json-read (open-file-input-port "25.js") "25.js" 1 1)
-    #t))
