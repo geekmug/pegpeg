@@ -197,15 +197,9 @@
   (define json-do-tests
     (lambda ()
       (json-read (open-file-input-port "tests/1600.js") "tests/1600.js" 1 1)
+      (json-read (open-file-input-port "tests/JSON_checker/pass2.json") "pass2.json" 1 1)
+      (json-read (open-file-input-port "tests/JSON_checker/pass3.json") "pass3.json" 1 1)
+; XXX: Needs UTF-16 support
+;    (json-read (open-file-input-port "tests/JSON_checker/pass1.json") "pass1.json" 1 1)
       #f))
 )
-
-(import (json))
-(define json-do-tests
-  (lambda ()
-    (json-read (open-file-input-port "tests/1600.js") "1600.js" 1 1)
-    (json-read (open-file-input-port "tests/JSON_checker/pass2.json") "pass2.json" 1 1)
-    (json-read (open-file-input-port "tests/JSON_checker/pass3.json") "pass3.json" 1 1)
-;    (json-read (open-file-input-port "tests/JSON_checker/pass1.json") "pass1.json" 1 1)
-    #f
-    ))
