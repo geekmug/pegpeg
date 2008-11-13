@@ -32,15 +32,17 @@
 
 (library (peg helpers)
   (export
+    peg-trace
+    printf
+    object->string
+    symbol->list
+
+    ; Missing in Chez Scheme's (rnrs)
     syntax-violation
     char=?
     char<=?
     char>=?
     string->number
-    printf
-    object->string
-    symbol->list
-    peg-trace
   )
   (import (rnrs)
           (only (scheme) char=? char<=? char>=? string->number))
@@ -128,8 +130,7 @@
     peg-parse-error-message
     peg-parse-error-stream
   )
-  (import (peg helpers) (rnrs)
-          (only (scheme) trace-define-syntax trace-lambda trace-let))
+  (import (peg helpers) (rnrs))
 
   (define-record-type peg-stream
     (fields
@@ -197,6 +198,188 @@
                   nps))))
           ps))))
 
+  (define peg-stream>?
+    (lambda (stream1 stream2)
+      (let ([line1 (peg-stream-line stream1)]
+            [col1 (peg-stream-col stream1)]
+            [line2 (peg-stream-line stream2)]
+            [col2 (peg-stream-col stream2)])
+        (cond
+          [(> line1 line2) #t]
+          [(> line2 line1) #f]
+          [(> col1 col2) #t]
+          [else #f]))))
+
+  (define peg-parse-error>?
+    (lambda (err1 err2)
+      (let ([stream1 (peg-parse-error-stream err1)]
+            [stream2 (peg-parse-error-stream err2)])
+        (peg-stream>? stream1 stream2))))
+
+  (define peg-trace-indent
+    (let ([indent 0])
+      (case-lambda
+        [() indent]
+        [(v) (set! indent v)])))
+
+  (define peg-trace-print-indent
+    (lambda ()
+      (let loop ([indent (peg-trace-indent)])
+        (if (> indent 0)
+          (begin
+            (display "| ")
+            (loop (- indent 1)))))))
+
+  (define peg-trace-result->string
+    (lambda (x)
+      (cond
+        [(peg-parse-error? x)
+         (string-append
+           "[peg-parse-error "
+           (peg-trace-result->string (peg-parse-error-suberror x))
+           " "
+           (object->string (peg-parse-error-message x))
+           " "
+           (peg-trace-result->string (peg-parse-error-stream x))
+           "]")]
+        [(peg-result? x)
+         (string-append
+           "[peg-result "
+           (object->string (peg-result-bindings x))
+           " "
+           (peg-trace-result->string (peg-result-stream x))
+           "]")]
+        [(peg-body-result? x)
+         (string-append
+           "[peg-body-result "
+           (object->string (peg-body-result-value x))
+           " "
+           (peg-trace-result->string (peg-body-result-stream x))
+           "]")]
+        [(peg-stream? x)
+         (string-append
+           "[peg-stream "
+           (object->string (peg-stream-value x))
+           " "
+           (object->string (peg-stream-name x))
+           " "
+           (object->string (peg-stream-line x))
+           " "
+           (object->string (peg-stream-col x))
+           "]")]
+        [else (object->string x)])))
+
+  (define-syntax peg-trace-push
+    (lambda (x)
+      (syntax-case x ()
+        [(_ args ...)
+         (if (peg-trace)
+           #`(let ()
+               (peg-trace-print-indent)
+               (printf args ...)
+               (peg-trace-indent (+ (peg-trace-indent) 1)))
+           #f)])))
+
+  (define-syntax peg-trace-pop
+    (lambda (x)
+      (syntax-case x ()
+        [(_ args ...)
+         (if (peg-trace)
+           #`(let ()
+               (peg-trace-indent (- (peg-trace-indent) 1))
+               (peg-trace-print-indent)
+               (printf args ...))
+           #f)])))
+
+  (define-syntax ?
+    (lambda (x) (syntax-violation x "misplaced identifier" x)))
+  (define-syntax &
+    (lambda (x) (syntax-violation x "misplaced identifier" x)))
+  (define-syntax !
+    (lambda (x) (syntax-violation x "misplaced identifier" x)))
+  (define-syntax @
+    (lambda (x) (syntax-violation x "misplaced identifier" x)))
+  (define-syntax <-
+    (lambda (x) (syntax-violation x "misplaced identifier" x)))
+
+  (define peg-stream-memo-add!
+    (lambda (stream k v)
+      (let ([memo (peg-stream-memo stream)])
+        (peg-stream-memo-set! stream
+          (if (assq k memo)
+            (map
+              (lambda (m)
+                (if (eq? (car m) k)
+                  (cons k v)
+                  m))
+              memo)
+            `((,k . ,v) ,@memo))))))
+
+  (define peg-stream-memo-fetch
+    (lambda (stream k)
+      (let ([m (assq k (peg-stream-memo stream))])
+        (if m
+          (cdr m)
+          #f))))
+
+  (define peg-apply-rule
+    (lambda (rule stream)
+      (let ([m (peg-stream-memo-fetch stream rule)])
+        (if (not m)
+          (let ([result (rule stream)])
+            (peg-stream-memo-add! stream rule result)
+            result)
+          m))))
+
+  (define-syntax peg-parser
+    (lambda (x)
+      (syntax-case x ()
+        [(_ ((nt-sym* nt-type*) ...) (nt* (nt*-expr* nt*-body** ...) ...) ...)
+         (with-syntax ([nt-start
+                        (syntax-case #'(nt* ...) ()
+                          [(nt0 nt1 ...) #'nt0])])
+           #`(let ()
+               (define nt*
+                 (lambda (stream)
+                   (peg-trace-push "~s~%" 'nt*)
+                   (let ([result
+                          ((peg-nt ((nt-sym* nt-type*) ...)
+                             (nt*-expr* (let () nt*-body** ...)) ...)
+                            stream)])
+                     (peg-trace-pop "~a~%" (peg-trace-result->string result))
+                     result)))
+               ...
+               (lambda (generator)
+                 (let ([result
+                        (if (peg-stream? generator)
+                          (peg-apply-rule nt-start generator)
+                          (peg-apply-rule nt-start
+                            (generator->peg-stream generator)))])
+                   (if (peg-parse-error? result)
+                     result
+                     ((peg-body-result-value result)))))))])))
+
+  (define-syntax peg-nt
+    (syntax-rules ()
+      [(_ nt-bindings (nt-expr nt-body))
+       (lambda (stream)
+         (let ([result (peg-expr nt-bindings nt-expr stream)])
+           (if (peg-parse-error? result)
+             result
+             (peg-body result nt-expr nt-body))))]
+      [(_ nt-bindings (nt-expr0 nt-body0) (nt-expr1 nt-body1) ...)
+       (lambda (stream)
+         (let ([result0 (peg-expr nt-bindings nt-expr0 stream)])
+           (if (peg-parse-error? result0)
+             (let ([result1
+                    ((peg-nt nt-bindings (nt-expr1 nt-body1) ...) stream)])
+               (if (peg-parse-error? result1)
+                 (if (peg-parse-error>? result0 result1)
+                   result0
+                   result1)
+                 result1))
+             (peg-body result0 nt-expr0 nt-body0))))]))
+
   (define peg-stream-get-range
     (lambda (start end)
       (let loop ([stream start] [values '()])
@@ -245,121 +428,6 @@
           (cdr value)
           peg-unmatched))))
 
-  (define peg-parse-error>?
-    (lambda (err1 err2)
-      (let ([stream1 (peg-parse-error-stream err1)]
-            [stream2 (peg-parse-error-stream err2)])
-        (let ([line1 (peg-stream-line stream1)]
-              [col1 (peg-stream-col stream1)]
-              [line2 (peg-stream-line stream2)]
-              [col2 (peg-stream-col stream2)])
-          (cond
-            [(> line1 line2) #t]
-            [(> line2 line1) #f]
-            [(> col1 col2) #t]
-            [else #f])))))
-
-  (define peg-trace-indent
-    (let ([indent 0])
-      (case-lambda
-        [() indent]
-        [(v) (set! indent v)])))
-
-  (define peg-trace-print-indent
-    (lambda ()
-      (let loop ([indent (peg-trace-indent)])
-        (if (> indent 0)
-          (begin
-            (display "| ")
-            (loop (- indent 1)))))))
-
-  (define-syntax peg-trace-push
-    (lambda (x)
-      (syntax-case x ()
-        [(_ args ...)
-         (if (peg-trace)
-           #`(let ()
-               (peg-trace-print-indent)
-               (printf args ...)
-               (peg-trace-indent (+ (peg-trace-indent) 1)))
-           #f)])))
-
-  (define-syntax peg-trace-pop
-    (lambda (x)
-      (syntax-case x ()
-        [(_ args ...)
-         (if (peg-trace)
-           #`(let ()
-               (peg-trace-indent (- (peg-trace-indent) 1))
-               (peg-trace-print-indent)
-               (printf args ...))
-           #f)])))
-
-  (define-syntax ?
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-  (define-syntax &
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-  (define-syntax !
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-  (define-syntax @
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-  (define-syntax <-
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-
-  (define-syntax peg-parser
-    (lambda (x)
-      (syntax-case x ()
-        [(_ ((nt-sym* nt-type*) ...) (nt* (nt*-expr* nt*-body** ...) ...) ...)
-         #`(let ()
-             (define nt*
-               (lambda (stream)
-                 (peg-trace-push "~s~%" 'nt*)
-                 (let ([result
-                        (let* ([memo (peg-stream-memo stream)]
-                               [entry (assq 'nt* memo)])
-                          (if entry
-                            (cdr entry)
-                            (let ([result
-                                   ((peg-nt ((nt-sym* nt-type*) ...)
-                                      (nt*-expr* (let () nt*-body** ...)) ...)
-                                    stream)])
-                              (peg-stream-memo-set! stream
-                                `(('nt* . ,result) ,@memo))
-                              result)))])
-                   (peg-trace-pop "~s~%" result)
-                   result)))
-             ...
-             (lambda (generator)
-               (let ([nt-start (car `(,nt* ...))])
-                 (let ([result
-                        (if (peg-stream? generator)
-                          (nt-start generator)
-                          (nt-start (generator->peg-stream generator)))])
-                   (if (peg-parse-error? result)
-                     result
-                     ((peg-body-result-value result)))))))])))
-
-  (define-syntax peg-nt
-    (syntax-rules ()
-      [(_ nt-bindings (nt-expr nt-body))
-       (lambda (stream)
-         (let ([result (peg-expr nt-bindings nt-expr stream)])
-           (if (peg-parse-error? result)
-             result
-             (peg-body result nt-expr nt-body))))]
-      [(_ nt-bindings (nt-expr0 nt-body0) (nt-expr1 nt-body1) ...)
-       (lambda (stream)
-         (let ([result0 (peg-expr nt-bindings nt-expr0 stream)])
-           (if (peg-parse-error? result0)
-             (let ([result1
-                    ((peg-nt nt-bindings (nt-expr1 nt-body1) ...) stream)])
-               (if (peg-parse-error? result1)
-                 (if (peg-parse-error>? result0 result1)
-                   result0
-                   result1)
-                 result1))
-             (peg-body result0 nt-expr0 nt-body0))))]))
-
   (define peg-match
     (lambda (stream match? eof-msg fail-msg)
       (let ([v (peg-stream-value stream)])
@@ -393,7 +461,7 @@
                          (break (cadr binding))))
                      nt-bindings)
                 #f)))))
-      (syntax-case x (* + ? & ! / @ <- -)
+      (syntax-case x (* + ? & ! / @ <- - unquote)
         ; Zero-or-more operator
         [(_ nt-bindings (* nt-expr0 nt-expr1 ...) stream)
          #`(let ([expr (lambda (st)
@@ -542,6 +610,25 @@
                 (object->string (syntax->datum #'nt-expr)))
               #'nt-expr)])]
 
+        ; Unquoted match
+        [(_ nt-bindings (unquote expr) stream)
+         #`(let ([val expr])
+             (peg-match stream
+               (lambda (v)
+                 (eqv? v val))
+               (string-append
+                 #,(string-append
+                     "unexpected end-of-file, expected: (unquote "
+                     (object->string (syntax->datum #'expr))
+                     ") = ")
+                 (object->string val))
+               (string-append
+                 #,(string-append
+                     "unexpected value, expected: (unquote "
+                     (object->string (syntax->datum #'expr))
+                     ") = ")
+                 (object->string val))))]
+
         ; Expand sequences
         [(_ nt-bindings (nt-expr) stream)
          #`(peg-expr nt-bindings nt-expr stream)]
@@ -596,7 +683,9 @@
                     "invalid use of a symbol in PEG expression: "
                     (symbol->string (syntax->datum #'nt-expr)))
                   #'nt-expr)
-                #`(let ([result (#,(datum->syntax #'nt-expr nt) stream)])
+                #`(let ([result (peg-apply-rule
+                                  #,(datum->syntax #'nt-expr nt)
+                                  stream)])
                     (if (peg-parse-error? result)
                       (make-peg-parse-error
                         result
@@ -628,7 +717,7 @@
 
   (define-syntax ~peg-body
     (lambda (x)
-      (syntax-case x (* + ? & ! / @ <- -)
+      (syntax-case x (* + ? & ! / @ <- - unquote)
         ; Zero-or-more operator
         [(_ result (* nt-expr0 ...) nt-body)
          #`(~peg-body result (nt-expr0 ...) nt-body)]
@@ -660,6 +749,10 @@
 
         ; Range match
         [(_ result (start - stop) nt-body)
+         #'nt-body]
+
+        ; Unquote match
+        [(_ result (unquote expr) nt-body)
          #'nt-body]
 
         ; Expand sequences
