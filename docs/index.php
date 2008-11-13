@@ -19,7 +19,7 @@ $geshi_inline->set_overall_class('inline');
 $geshi_inline->set_header_type(GESHI_HEADER_NONE);
 $geshi_inline->set_overall_style('font-family: monospace; font-size: 10pt;');
 
-$keywords = array('peg-parser');
+$keywords = array('peg-parser', 'peg-trace');
 
 $geshi->add_keyword_group(2, 'color: #A00000;', false, $keywords);
 $geshi_inline->add_keyword_group(2, 'color: #A00000;', false, $keywords);
@@ -46,7 +46,7 @@ function inline_code($code) {
 <? echo $geshi->get_stylesheet(false);
    echo $geshi_inline->get_stylesheet(false); ?>
 body { font-family: sans-serif; width: 700px; background-color: #fcfcfc; font-size: small; }
-p { margin: 0; margin-left: 1em; margin-bottom: 1em; }
+p { margin: 0; margin-left: 1em; margin-bottom: 1em; text-align: justify; }
 .header { font-size: large; font-weight: bold; text-align: center; }
 .section { font-size: large; font-weight: bold; padding: 0 0 1em 0; }
 .section .scheme.inline { font-size: large; }
@@ -94,17 +94,20 @@ that have been protected, one must escape the expression grammar via unquoting
 
 <div class="section">2.11. Ranges: <? inline_code('(a - b)') ?></div>
 
-<p>The <? inline_code('(a - b)') ?> expression will match a range of values,
+<p>
+The <? inline_code('(a - b)') ?> expression will match a range of values,
 inclusively. For example, <? inline_code('(#\0 - #\9)') ?> will match any
 digit character. For consistency, the range expression supports the automatic
 expansion of strings (only for strings of length 1); the expression
 <? inline_code('("0" - "9")') ?> is treated identically to the previous
 example. Integer ranges can also be matched, to support the use case of
 tokens (e.g., <? inline_code('(0 - 9)') ?>).
+</p>
 
 <div class="section">2.12. Any: <? inline_code('@') ?></div>
 
-<p>The <? inline_code('@') ?> symbol will match any single value from the
+<p>
+The <? inline_code('@') ?> symbol will match any single value from the
 input stream. In the common case that you want to know what value was matched,
 one can use assignment to capture the input stream that matched. The
 expression <? inline_code('(c <- @)') ?> will match any character and assign
@@ -116,17 +119,47 @@ from the input stream. The expression <? inline_code('(! @)') ?> will only
 
 <div class="section">2.3. Sequence: <? inline_code('(p0 p1 ...)') ?></div>
 
-<div class="section">2.4. Zero-or-More: <? inline_code('(* p0 p1 ...)') ?></div>
+<p>The <? inline_code('(p0 p1 ...)') ?> expression will match the
+subexpressions in-order.</p>
 
-<div class="section">2.5. One-or-More: <? inline_code('(+ p0 p1 ...)') ?></div>
+<div class="section">2.4. Ordered-choice: <? inline_code('(/ p0 p1 ...)') ?></div>
 
-<div class="section">2.6. Optional: <? inline_code('(? p0 p1 ...)') ?></div>
+<div class="section">2.5. Zero-or-More: <? inline_code('(* p0 p1 ...)') ?></div>
 
-<div class="section">2.7. And-predicate: <? inline_code('(& p0 p1 ...)') ?></div>
+<p>
+The <? inline_code('(* p0 p1 ...)') ?> expression will match the sequence
+<? inline_code('(p0 p1 ...)') ?> zero or more times. If there are any
+variables bound by the subexpressions, then those variables will be bound a
+list of the values for each successful match. For instance,
+<? inline_code('(* some-nt)') ?> will bind <? inline_code('some-nt') ?> to
+the list of values returned by the nonterminal's semantic actions. In the
+case of zero matches, <? inline_code('some-nt') ?> will be bound to the 
+<? inline_code('peg-unmatched') ?> special object, which can be test for by
+calling the procedure <? inline_code('peg-unmatched?') ?>.
+</p>
 
-<div class="section">2.8. Not-predicate: <? inline_code('(! p0 p1 ...)') ?></div>
+<p>
+It's important to note that if there are any ordered-choices that bind
+variables, a bit of indeterminism sneaks in. For instance, expressing "match
+zero or more 'A's and 'B's could be expressed as:
+<? inline_code('(* (/ As Bs))') ?>. However, it is important to remember that
+the variable <? inline_code('As') ?> will be bound to either
+<? inline_code('peg-unmatched') ?> or the list of matches for
+<? inline_code('As') ?>; instances of <? inline_code('peg-unmatched') ?> will
+not be inserted into the list when <? inline_code('Bs') ?> matches. All
+ordering information between the choices of <? inline_code('As') ?> and
+<? inline_code('Bs') ?> will have been lost. In the case that this ordering
+information is important, then you should factor out the subexpression as a
+new nonterminal that handles it explicitly.
+</p>
 
-<div class="section">2.9. Ordered-choice: <? inline_code('(/ p0 p1 ...)') ?></div>
+<div class="section">2.6. One-or-More: <? inline_code('(+ p0 p1 ...)') ?></div>
+
+<div class="section">2.7. Optional: <? inline_code('(? p0 p1 ...)') ?></div>
+
+<div class="section">2.8. And-predicate: <? inline_code('(& p0 p1 ...)') ?></div>
+
+<div class="section">2.9. Not-predicate: <? inline_code('(! p0 p1 ...)') ?></div>
 
 <div class="section">2.10. Assignment: <? inline_code('(s <- p0 p1 ...)') ?></div>
 
@@ -147,6 +180,21 @@ character range or "any character" match. In other words, the expression
 character and the variable <? inline_code('c') ?> takes the list of matching
 characters for the subexpression, a list of one character.
 </p>
+
+<div class="section">3. PEG Actions</div>
+
+<div class="section">4. PEG Errors</div>
+
+<div class="section">5. PEG Debugging</div>
+
+In order to debug your parser, you should call
+<? inline_code('(peg-trace #t)') ?> before the definition of your parser.
+The enabling of tracing affects the code generated for your parser. With
+tracing disabled, the code is simpler and faster. With tracing enabled, you
+will be shown an extremely verbose trace of the matching successes and
+failures in a recursive line-chart format. If there are no errors while
+parsing, you will also be shown a similiar recursive line-chart showing the
+final evaluation sequence of the semantic actions.
 
 </body>
 </html>
