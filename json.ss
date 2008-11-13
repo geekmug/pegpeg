@@ -82,12 +82,12 @@
         ["\\t" (integer->char 9)]  ; horizontal tab
         [("\\u" hd1 hd2 hd3 hd4)
          (integer->char
-           (+ (fxarithmetic-shift-left hd1 24)
-              (fxarithmetic-shift-left hd2 16)
-              (fxarithmetic-shift-left hd3  8)
+           (+ (fxarithmetic-shift-left hd1 12)
+              (fxarithmetic-shift-left hd2  8)
+              (fxarithmetic-shift-left hd3  4)
               hd4))])
       (HexDigit
-        [(digit <- (#\0 - #\9))
+        [(digit <- ("0" - "9"))
          (- (char->integer (car digit)) (char->integer #\0))]
         [(/ "a" "A") 10] [(/ "b" "B") 11]
         [(/ "c" "C") 12] [(/ "d" "D") 13]
@@ -108,7 +108,7 @@
         [("." (+ dgt))
          (string->number (list->string `(#\. ,@dgt)))])
       (Exponent
-        [((/ "e" "e+" "E" "E+") (+ dgt))
+        [((/ "e+" "e" "E+" "E") (+ dgt))
          (string->number (list->string dgt))]
         [((/ "e-" "E-") (+ dgt))
          (- (string->number (list->string dgt)))])
@@ -116,7 +116,7 @@
         ["0" #\0]
         [nzdgt nzdgt])
       (NonzeroDigit
-        [(digit <- (#\1 - #\9)) (car digit)])
+        [(digit <- ("1" - "9")) (car digit)])
       (Whitespace
         [(/ " " "\t" "\r" "\n") #t])))
 
@@ -154,6 +154,8 @@
   (define ~json-write
     (lambda (port object)
       (cond
+        [(eq? (if #f #f) object)
+         (display "null" port)]
         [(boolean? object)
          (if object
            (display "true" port)
@@ -201,5 +203,9 @@
 (import (json))
 (define json-do-tests
   (lambda ()
-    (json-read (open-file-input-port "tests/1600.js") "tests/1600.js" 1 1)
-    #f))
+    (json-read (open-file-input-port "tests/1600.js") "1600.js" 1 1)
+    (json-read (open-file-input-port "tests/JSON_checker/pass2.json") "pass2.json" 1 1)
+    (json-read (open-file-input-port "tests/JSON_checker/pass3.json") "pass3.json" 1 1)
+;    (json-read (open-file-input-port "tests/JSON_checker/pass1.json") "pass1.json" 1 1)
+    #f
+    ))
