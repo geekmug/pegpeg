@@ -133,6 +133,7 @@
   (import (peg helpers) (rnrs))
 
   (define-record-type peg-stream
+    (nongenerative 754e2297-a607-4cc3-b384-cadb3a3c670a)
     (fields
       (immutable value) ; value at this position in the stream
       (mutable next)    ; thunk that returns the next peg-stream instance
@@ -147,27 +148,34 @@
           (new value next name line col '())))))
 
   (define-record-type peg-result
+    (nongenerative a5bf48ff-eada-4b56-9fa6-b9aa6c858b62)
     (fields
       (immutable bindings) ; alist of (sym . thunk/group) for body
       (immutable stream) ; continuing peg-stream
     ))
 
   (define-record-type peg-result-group
+    (nongenerative 9323809d-f750-47ba-bc18-bb52cdf37f11)
     (fields
       (mutable list) ; a list of thunks to formed into a normal list
     ))
 
-  (define-record-type ~peg-unmatched) ; guard object for optional bindings
+  ; guard object for optional bindings
+  (define-record-type ~peg-unmatched
+    (nongenerative 323565f5-91c6-4db1-b0ec-cf5f89a1cd80)
+  )
   (define peg-unmatched (make-~peg-unmatched))
   (define peg-unmatched? ~peg-unmatched?)
 
   (define-record-type peg-body-result
+    (nongenerative 22097854-0c44-47c5-8525-6f44dda258e1)
     (fields
       (immutable value)  ; thunk that returns the value of body expression
       (immutable stream) ; continuing peg-stream
     ))
 
   (define-record-type peg-parse-error
+    (nongenerative a1067241-5e62-4a94-833c-4e96465a89b3)
     (fields
       (immutable suberror) ; if there is an underlying error for this error
       (immutable message)  ; error message for the user
