@@ -133,7 +133,7 @@
   (import (peg helpers) (rnrs))
 
   (define-record-type peg-stream
-    (nongenerative 754e2297-a607-4cc3-b384-cadb3a3c670a)
+    (nongenerative peg-stream-754e2297-a607-4cc3-b384-cadb3a3c670a)
     (fields
       (immutable value) ; value at this position in the stream
       (mutable next)    ; thunk that returns the next peg-stream instance
@@ -148,34 +148,34 @@
           (new value next name line col '())))))
 
   (define-record-type peg-result
-    (nongenerative a5bf48ff-eada-4b56-9fa6-b9aa6c858b62)
+    (nongenerative peg-result-a5bf48ff-eada-4b56-9fa6-b9aa6c858b62)
     (fields
       (immutable bindings) ; alist of (sym . thunk/group) for body
       (immutable stream) ; continuing peg-stream
     ))
 
   (define-record-type peg-result-group
-    (nongenerative 9323809d-f750-47ba-bc18-bb52cdf37f11)
+    (nongenerative peg-result-group-9323809d-f750-47ba-bc18-bb52cdf37f11)
     (fields
       (mutable list) ; a list of thunks to formed into a normal list
     ))
 
   ; guard object for optional bindings
   (define-record-type ~peg-unmatched
-    (nongenerative 323565f5-91c6-4db1-b0ec-cf5f89a1cd80)
+    (nongenerative ~peg-unmatched-323565f5-91c6-4db1-b0ec-cf5f89a1cd80)
   )
   (define peg-unmatched (make-~peg-unmatched))
   (define peg-unmatched? ~peg-unmatched?)
 
   (define-record-type peg-body-result
-    (nongenerative 22097854-0c44-47c5-8525-6f44dda258e1)
+    (nongenerative peg-body-result-22097854-0c44-47c5-8525-6f44dda258e1)
     (fields
       (immutable value)  ; thunk that returns the value of body expression
       (immutable stream) ; continuing peg-stream
     ))
 
   (define-record-type peg-parse-error
-    (nongenerative a1067241-5e62-4a94-833c-4e96465a89b3)
+    (nongenerative peg-parse-error-a1067241-5e62-4a94-833c-4e96465a89b3)
     (fields
       (immutable suberror) ; if there is an underlying error for this error
       (immutable message)  ; error message for the user
@@ -813,4 +813,93 @@
                (peg-trace-pop "~s~%" bresult)
                bresult)))
          (peg-result-stream result))]))
+)
+
+(library (peg tests)
+  (export do-tests)
+  (import (rnrs) (peg) (srfi-78) (srfi-42))
+
+  (define parse-string
+    (lambda (parser input)
+      (let ([test-string (string->list input)])
+        (define generator
+          (lambda ()
+            (if (null? test-string)
+              (eof-object)
+              (let ([c (car test-string)])
+                (set! test-string (cdr test-string))
+                c))))
+        (parser generator))))
+
+  (define expr-tests
+    (lambda ()
+      (define expr-parser
+        (peg-parser
+          [(e Expr) (p Product) (v Value) (n Number) (d Digit) (ws Whitespace)]
+          (Expr
+            [(p1 (* ws) "+" (* ws) p2) (+ p1 p2)]
+            [(p1 (* ws) "-" (* ws) p2) (- p1 p2)]
+            [p p])
+          (Product
+            [(v1 (* ws) "*" (* ws) v2) (* v1 v2)]
+            [(v1 (* ws) "/" (* ws) v2) (/ v1 v2)]
+            [v v])
+          (Value
+            [("(" (* ws) e (* ws) ")") e]
+            [n n])
+          (Number
+            [(+ d2)
+             (let loop ([n 0] [d2 d2])
+               (if (null? d2)
+                 n
+                 (loop (+ (* 10 n) (car d2)) (cdr d2))))])
+          (Digit
+            [(digit <- ("0" - "9"))
+             (- (char->integer (car digit)) (char->integer #\0))])
+          (Whitespace
+            [(/ " " "\t" "\r" "\n") #t])))
+      (check (parse-string expr-parser "222/2") => 111)
+      (check (parse-string expr-parser "((((((((1))))))))") => 1)
+      (check (parse-string expr-parser "(22+122)*(3+2)") => 720)
+      (check (parse-string expr-parser "((123+2)/23)*23-1") => 124)
+      (check (peg-parse-error? (parse-string expr-parser "((((((((1")) => #t)
+      (check (peg-parse-error? (parse-string expr-parser "abc")) => #t)
+      (check (peg-parse-error? (parse-string expr-parser "")) => #t)
+    ))
+
+  (define abc-tests
+    (lambda ()
+      ; L = {a^n b^n c^n : n>= 1}
+      (define abc-parser
+        (peg-parser
+          [(a A) (b B)]
+          (S
+            [((& a (! "b")) (+ "a") b (! "c")) b])
+          (A
+            [("a" (? a) "b") 'a])
+          (B
+            [("b" (? b) "c") 'b])))
+      (define make-test-string
+        (lambda (a b c)
+          (string-append
+            (string-ec (:range i a) #\a)
+            (string-ec (:range i b) #\b)
+            (string-ec (:range i c) #\c))))
+      (let ([n 10])
+        (check-ec (:range a n) (:range b n) (:range c n)
+                  (parse-string abc-parser
+                    (make-test-string a b c))
+          (=> (lambda (p q)
+                (if (and (> a 0) (= a b) (= b c))
+                  (eqv? p q)
+                  (or (peg-parse-error? p) (peg-parse-error? q)))))
+          'b))
+    ))
+
+  (define do-tests
+    (lambda ()
+      (check-set-mode! 'report-failed)
+      (abc-tests)
+      (expr-tests)
+    ))
 )
