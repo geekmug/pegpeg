@@ -36,6 +36,7 @@
     printf
     object->string
     symbol->list
+    syntax-symbol=?
 
     ; Missing in Chez Scheme's (rnrs)
     syntax-violation
@@ -101,6 +102,13 @@
     (lambda (sym)
       (string->list (symbol->string sym))))
 
+  (define syntax-symbol=?
+    (lambda (stx x)
+      (let ([y (syntax->datum stx)])
+        (and (symbol? x) (symbol? y)
+             (or (free-identifier=? #'x stx)
+                 (eq? x y))))))
+
   (define peg-trace
     (let ([trace #f])
       (case-lambda
@@ -110,7 +118,7 @@
 
 (library (peg)
   (export
-    peg-parser ? & ! @ <-
+    peg-parser
 
     peg-unmatched?
 
@@ -299,17 +307,6 @@
                (printf args ...))
            #f)])))
 
-  (define-syntax ?
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-  (define-syntax &
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-  (define-syntax !
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-  (define-syntax @
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-  (define-syntax <-
-    (lambda (x) (syntax-violation x "misplaced identifier" x)))
-
   (define peg-stream-memo-add!
     (lambda (stream k v)
       (let ([memo (peg-stream-memo stream)])
@@ -469,9 +466,10 @@
                          (break (cadr binding))))
                      nt-bindings)
                 #f)))))
-      (syntax-case x (* + ? & ! / @ <- - unquote)
+      (syntax-case x () ;(* + ? & ! / @ <- - unquote)
         ; Zero-or-more operator
         [(_ nt-bindings (* nt-expr0 nt-expr1 ...) stream)
+         (syntax-symbol=? #'* '*)
          #`(let ([expr (lambda (st)
                          (peg-expr nt-bindings (nt-expr0 nt-expr1 ...) st))])
              (let loop ([nresult (expr stream)]
@@ -483,6 +481,7 @@
 
         ; One-or-more operator
         [(_ nt-bindings (+ nt-expr0 nt-expr1 ...) stream)
+         (syntax-symbol=? #'+ '+)
          #`(let ([expr (lambda (st)
                          (peg-expr nt-bindings (nt-expr0 nt-expr1 ...) st))])
              (let ([result (expr stream)])
@@ -499,6 +498,7 @@
 
         ; Optional operator
         [(_ nt-bindings (? nt-expr0 nt-expr1 ...) stream)
+         (syntax-symbol=? #'? '?)
          #`(let ([result
                   (peg-expr nt-bindings (nt-expr0 nt-expr1 ...) stream)])
              (if (peg-parse-error? result)
@@ -507,6 +507,7 @@
 
         ; And-predicate
         [(_ nt-bindings (& nt-expr0 nt-expr1 ...) stream)
+         (syntax-symbol=? #'& '&)
          #`(let ([result
                   (peg-expr nt-bindings (nt-expr0 nt-expr1 ...) stream)])
              (if (peg-parse-error? result)
@@ -515,6 +516,7 @@
 
         ; Not-predicate
         [(_ nt-bindings (! nt-expr0 nt-expr1 ...) stream)
+         (syntax-symbol=? #'! '!)
          #`(let ([result
                   (peg-expr nt-bindings (nt-expr0 nt-expr1 ...) stream)])
              (if (peg-parse-error? result)
@@ -528,8 +530,10 @@
 
         ; Ordered-choice operator
         [(_ nt-bindings (/ nt-expr) stream)
+         (syntax-symbol=? #'/ '/)
          #`(peg-expr nt-bindings nt-expr stream)]
         [(_ nt-bindings (/ nt-expr0 nt-expr1 ...) stream)
+         (syntax-symbol=? #'/ '/)
          #`(let ([result (peg-expr nt-bindings nt-expr0 stream)])
              (if (peg-parse-error? result)
                (peg-expr nt-bindings (/ nt-expr1 ...) stream)
@@ -537,6 +541,7 @@
 
         ; Assignment operator
         [(_ nt-bindings (symbol <- nt-expr0 nt-expr1 ...) stream)
+         (syntax-symbol=? #'<- '<-)
          #`(let ([result
                   (peg-expr nt-bindings (nt-expr0 nt-expr1 ...) stream)])
              (if (peg-parse-error? result)
@@ -550,6 +555,7 @@
 
         ; Range match
         [(_ nt-bindings (start - stop) stream)
+         (syntax-symbol=? #'- '-)
          (cond
            [(and (string? (syntax->datum #'start))
                  (string? (syntax->datum #'stop)))
@@ -620,6 +626,7 @@
 
         ; Unquoted match
         [(_ nt-bindings (unquote expr) stream)
+         (syntax-symbol=? #'unquote 'unquote)
          #`(let ([val expr])
              (peg-match stream
                (lambda (v)
@@ -652,6 +659,7 @@
 
         ; Any match
         [(_ nt-bindings @ stream)
+         (syntax-symbol=? #'@ '@)
          #`(if (eof-object? (peg-stream-value stream))
              (make-peg-parse-error #f
                "unexpected end-of-file, expected any value or character"
@@ -725,42 +733,51 @@
 
   (define-syntax ~peg-body
     (lambda (x)
-      (syntax-case x (* + ? & ! / @ <- - unquote)
+      (syntax-case x () ;(* + ? & ! / @ <- - unquote)
         ; Zero-or-more operator
         [(_ result (* nt-expr0 ...) nt-body)
+         (syntax-symbol=? #'* '*)
          #`(~peg-body result (nt-expr0 ...) nt-body)]
 
         ; One-or-more operator
         [(_ result (+ nt-expr0 ...) nt-body)
+         (syntax-symbol=? #'+ '+)
          #`(~peg-body result (nt-expr0 ...) nt-body)]
 
         ; Optional operator
         [(_ result (? nt-expr0 ...) nt-body)
+         (syntax-symbol=? #'? '?)
          #`(~peg-body result (nt-expr0 ...) nt-body)]
 
         ; And-predicate
         [(_ result (& nt-expr0 ...) nt-body)
+         (syntax-symbol=? #'& '&)
          #`(~peg-body result (nt-expr0 ...) nt-body)]
 
         ; Not-predicate
         [(_ result (! nt-expr0 ...) nt-body)
+         (syntax-symbol=? #'! '!)
          #`(~peg-body result (nt-expr0 ...) nt-body)]
 
         ; Ordered-choice operator
         [(_ result (/ nt-expr0 ...) nt-body)
+         (syntax-symbol=? #'/ '/)
          #`(~peg-body result (nt-expr0 ...) nt-body)]
 
         ; Assignment operator
         [(_ result (symbol <- nt-expr0 ...) nt-body)
+         (syntax-symbol=? #'<- '<-)
          #`(let ([symbol (peg-result-bindings-lookup result 'symbol)])
              nt-body)]
 
         ; Range match
         [(_ result (start - stop) nt-body)
+         (syntax-symbol=? #'- '-)
          #'nt-body]
 
         ; Unquote match
         [(_ result (unquote expr) nt-body)
+         (syntax-symbol=? #'unquote 'unquote)
          #'nt-body]
 
         ; Expand sequences
@@ -772,6 +789,7 @@
 
         ; Any match
         [(_ result @ nt-body)
+         (syntax-symbol=? #'@ '@)
          #'nt-body]
 
         ; Nonterminal or terminal base case
