@@ -35,34 +35,10 @@
     peg-trace
     printf
     object->string
-    symbol->list
     syntax-symbol=?
-
-    ; Missing in Chez Scheme's (rnrs)
-    syntax-violation
-    char=?
-    char<=?
-    char>=?
-    string->number
+    peg-binding-name-match
   )
-  (import (rnrs)
-          (only (scheme) char=? char<=? char>=? string->number))
-
-  (define syntax-violation
-    (case-lambda
-      [(who msg form)
-       (syntax-violation who msg form #f)]
-      [(who msg form subform)
-       (if who
-         (raise
-           (condition
-             (make-who-condition who)
-             (make-message-condition msg)
-             (make-syntax-violation form subform)))
-         (raise
-           (condition
-             (make-message-condition msg)
-             (make-syntax-violation form subform))))]))
+  (import (rnrs))
 
   (define dofmt
     (lambda (p cntl args)
@@ -114,6 +90,27 @@
       (case-lambda
         [() trace]
         [(v) (let ([w trace]) (set! trace v) w)])))
+
+  (define peg-binding-name-match
+    (lambda (nt-bindings sym)
+      (define match?
+        (lambda (binding sym)
+          (cond
+            [(null? binding)
+             (or (null? sym)
+                 (integer? (string->number (list->string sym))))]
+            [(null? sym) #f]
+            [(char=? (car binding) (car sym))
+             (match? (cdr binding) (cdr sym))]
+            [else #f])))
+      (let ([symls (symbol->list sym)])
+        (call/cc
+          (lambda (break)
+            (map (lambda (binding)
+                   (if (match? (symbol->list (car binding)) symls)
+                     (break (cadr binding))))
+                 nt-bindings)
+            #f)))))
 )
 
 (library (peg)
@@ -138,7 +135,7 @@
     peg-parse-error-message
     peg-parse-error-stream
   )
-  (import (peg helpers) (rnrs))
+  (import (rnrs) (peg helpers))
 
   (define-record-type peg-stream
     (nongenerative peg-stream-754e2297-a607-4cc3-b384-cadb3a3c670a)
@@ -446,27 +443,7 @@
 
   (define-syntax peg-expr
     (lambda (x)
-      (define peg-binding-name-match
-        (lambda (nt-bindings sym)
-          (define match?
-            (lambda (binding sym)
-              (cond
-                [(null? binding)
-                 (or (null? sym)
-                     (integer? (string->number (list->string sym))))]
-                [(null? sym) #f]
-                [(char=? (car binding) (car sym))
-                 (match? (cdr binding) (cdr sym))]
-                [else #f])))
-          (let ([symls (symbol->list sym)])
-            (call/cc
-              (lambda (break)
-                (map (lambda (binding)
-                       (if (match? (symbol->list (car binding)) symls)
-                         (break (cadr binding))))
-                     nt-bindings)
-                #f)))))
-      (syntax-case x () ;(* + ? & ! / @ <- - unquote)
+      (syntax-case x () ;(* + ? & ! / % <- - unquote)
         ; Zero-or-more operator
         [(_ nt-bindings (* nt-expr0 nt-expr1 ...) stream)
          (syntax-symbol=? #'* '*)
@@ -658,8 +635,8 @@
                    (peg-result-merge result0 result1)))))]
 
         ; Any match
-        [(_ nt-bindings @ stream)
-         (syntax-symbol=? #'@ '@)
+        [(_ nt-bindings % stream)
+         (syntax-symbol=? #'% '%)
          #`(if (eof-object? (peg-stream-value stream))
              (make-peg-parse-error #f
                "unexpected end-of-file, expected any value or character"
@@ -733,7 +710,7 @@
 
   (define-syntax ~peg-body
     (lambda (x)
-      (syntax-case x () ;(* + ? & ! / @ <- - unquote)
+      (syntax-case x () ;(* + ? & ! / % <- - unquote)
         ; Zero-or-more operator
         [(_ result (* nt-expr0 ...) nt-body)
          (syntax-symbol=? #'* '*)
@@ -788,8 +765,8 @@
              (~peg-body result (nt-expr1 ...) nt-body))]
 
         ; Any match
-        [(_ result @ nt-body)
-         (syntax-symbol=? #'@ '@)
+        [(_ result % nt-body)
+         (syntax-symbol=? #'% '%)
          #'nt-body]
 
         ; Nonterminal or terminal base case
@@ -835,7 +812,7 @@
 
 (library (peg tests)
   (export do-tests)
-  (import (rnrs) (peg) (srfi-78) (srfi-42))
+  (import (rnrs) (rnrs eval) (srfi-78) (srfi-42) (peg))
 
   (define parse-string
     (lambda (parser input)
@@ -876,10 +853,10 @@
              (- (char->integer (car digit)) (char->integer #\0))])
           (Whitespace
             [(/ " " "\t" "\r" "\n") #t])))
-      (check (parse-string expr-parser "222/2") => 111)
-      (check (parse-string expr-parser "((((((((1))))))))") => 1)
-      (check (parse-string expr-parser "(22+122)*(3+2)") => 720)
-      (check (parse-string expr-parser "((123+2)/23)*23-1") => 124)
+      (check (parse-string expr-parser "222 / 2") => 111)
+      (check (parse-string expr-parser "(( (( ((((1)) ))) ) ))") => 1)
+      (check (parse-string expr-parser "(22 + 122)*(3 + 2)") => 720)
+      (check (parse-string expr-parser "((123+2) / 23)*23 - 1") => 124)
       (check (peg-parse-error? (parse-string expr-parser "((((((((1")) => #t)
       (check (peg-parse-error? (parse-string expr-parser "abc")) => #t)
       (check (peg-parse-error? (parse-string expr-parser "")) => #t)
@@ -914,9 +891,50 @@
           'b))
     ))
 
+  (define syntax-tests
+    (lambda ()
+      (define safe-eval
+        (lambda (x)
+          (call/cc
+            (lambda (return)
+              (with-exception-handler
+                (lambda (e)
+                  (cond
+                    [(syntax-violation? e) (return 'syntax-violation)]
+                    [else (return e)]))
+                (lambda ()
+                  (eval x (environment '(rnrs) '(peg)))))))))
+      (define-syntax check-syntax
+        (syntax-rules ()
+          [(_ is-good x)
+           (check (safe-eval x)
+             (=> (if is-good
+                   (lambda (p q) (not (equal? p q)))
+                   equal?))
+             'syntax-violation)]))
+
+      ; require a bindings group and at least one valid nt clause
+      (check-syntax #f '(peg-parser))
+      (check-syntax #f '(peg-parser []))
+      (check-syntax #f '(peg-parser [] ()))
+      (check-syntax #f '(peg-parser [] (S a)))
+      (check-syntax #f '(peg-parser (S ("a" #t))))
+      (check-syntax #t '(peg-parser [] (S ("a" #t))))
+      (check-syntax #t '(peg-parser [(a S)] (S ("a" #t))))
+
+      ; no duplicate bindings
+      (check-syntax #f '(peg-parser [(a S) (a S)] (S ("a" #t))))
+      (check-syntax #t '(peg-parser [(a S) (b S)] (S ("a" #t))))
+      (check-syntax #f '(peg-parser [(a S) (b S) (a S)] (S ("a" #t))))
+
+      ; no bindings that end with digits
+      (check-syntax #f '(peg-parser [(a0 S)] (S ("a" #t))))
+    ))
+
   (define do-tests
     (lambda ()
       (check-set-mode! 'report-failed)
+      (syntax-tests)
       (abc-tests)
       (expr-tests)
     ))

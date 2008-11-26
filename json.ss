@@ -30,12 +30,7 @@
     json-write
     json-do-tests
   )
-  (import (rnrs) (peg)
-          (only (scheme) fxsll string->number))
-
-  (define fxarithmetic-shift-left
-    (lambda (fx1 fx2)
-      (fxsll fx1 fx2)))
+  (import (rnrs) (peg))
 
   (define json-parser
     (peg-parser
@@ -71,7 +66,7 @@
            ""
            (list->string strchar))])
       (StringChar
-        [((! (/ "\"" "\\")) (c <- @)) (car c)]
+        [((! (/ "\"" "\\")) (c <- %)) (car c)]
         ["\\\"" #\"]
         ["\\\\" #\\]
         ["\\/" #\/]
@@ -141,7 +136,7 @@
              (lambda ()
                (read-char port)))]
           [else
-           (error 'json-read "unsupported textual input")]))
+           (error 'json-read "unsupported input")]))
       (json-parser (generator->peg-stream generator name line col))))
 
   (define json-read
@@ -152,31 +147,31 @@
       [(port/str name line col) (~json-read port/str name line col)]))
 
   (define ~json-write
-    (lambda (port object)
+    (lambda (value port)
       (cond
-        [(eq? (if #f #f) object)
+        [(eq? (if #f #f) value)
          (display "null" port)]
-        [(boolean? object)
-         (if object
+        [(boolean? value)
+         (if value
            (display "true" port)
            (display "false" port))]
-        [(number? object)
-         (display object port)]
-        [(string? object)
-         (write object port)]
-        [(vector? object)
+        [(number? value)
+         (display value port)]
+        [(string? value)
+         (write value port)]
+        [(vector? value)
          (display "[" port)
          (let loop ([i 0])
-           (if (< i (vector-length object))
+           (if (< i (vector-length value))
              (begin
                (if (> i 0)
                  (display "," port))
-               (~json-write port (vector-ref object i))
+               (~json-write port (vector-ref value i))
                (loop (+ i 1)))))
          (display "]" port)]
-        [(list? object)
+        [(list? value)
          (display "{" port)
-         (let loop ([elem object] [comma #f])
+         (let loop ([elem value] [comma #f])
            (if (not (null? elem))
              (begin
                (if comma
@@ -187,12 +182,12 @@
                (loop (cdr elem) #t))))
          (display "}" port)]
         [else
-         (error 'json-write "unsupported object: ~s" object)])))
+         (error 'json-write "unsupported scheme value: ~s" value)])))
 
   (define json-write
     (case-lambda
-      [(object) (~json-write (current-output-port) object)]
-      [(object port) (~json-write port object)]))
+      [(value) (~json-write value (current-output-port))]
+      [(value port) (~json-write value port)]))
 
   (define json-do-tests
     (lambda ()
@@ -203,3 +198,14 @@
 ;    (json-read (open-file-input-port "tests/JSON_checker/pass1.json") "pass1.json" 1 1)
       #f))
 )
+
+(import (json))
+(define json-do-tests
+  (lambda ()
+    (json-read (open-file-input-port "tests/1600.js") "1600.js" 1 1)
+    (json-read (open-file-input-port "tests/JSON_checker/pass2.json") "pass2.json" 1 1)
+    (json-read (open-file-input-port "tests/JSON_checker/pass3.json") "pass3.json" 1 1)
+; XXX: Needs UTF-16 support
+;    (json-read (open-file-input-port "tests/JSON_checker/pass1.json") "pass1.json" 1 1)
+    #f
+    ))
