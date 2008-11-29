@@ -35,6 +35,7 @@
     peg-trace
     printf
     object->string
+    symbol->list
     syntax-symbol=?
     peg-binding-name-match
   )
@@ -335,11 +336,31 @@
 
   (define-syntax peg-parser
     (lambda (x)
+      (define ensure-nt-bindings
+        (lambda (nt-bindings)
+          (let* ([bindings (syntax->datum nt-bindings)]
+                 [binding->stx (map (lambda (d s) (cons d s)) bindings nt-bindings)])
+            (map
+              (lambda (binding)
+                ; ensure binding doesn't end with a number
+                (let* ([s (symbol->list (car binding))]
+                       [last (list-ref s (- (length s) 1))])
+                  (if (and (char>=? last #\0) (char<=? last #\9))
+                    (syntax-violation 'peg-parser "invalid binding" x
+                      (car (cdr (assq binding binding->stx))))))
+                ; ensure binding doesn't match any other binding
+                (let ([others (remq binding bindings)])
+                  (let ([nt (peg-binding-name-match others (car binding))])
+                    (if nt
+                      (syntax-violation 'peg-parser "duplicate binding" x
+                        (car (cdr (assq binding binding->stx))))))))
+              bindings))))
       (syntax-case x ()
         [(_ ((nt-sym* nt-type*) ...) (nt* (nt*-expr* nt*-body** ...) ...) ...)
          (with-syntax ([nt-start
                         (syntax-case #'(nt* ...) ()
                           [(nt0 nt1 ...) #'nt0])])
+           (ensure-nt-bindings #'((nt-sym* nt-type*) ...))
            #`(let ()
                (define nt*
                  (lambda (stream)
