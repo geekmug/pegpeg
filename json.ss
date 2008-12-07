@@ -28,7 +28,10 @@
 ;;;   (JSON)", http://www.ietf.org/rfc/rfc4627.txt?number=4627
 ;;; JSON_checker Test Suite, http://www.json.org/JSON_checker/
 
-(library (json)
+(load "pegpeg.ss")
+(load "srfi-78.ss")
+
+(library (com scottdial json)
   (export
     json-parser
     json-read
@@ -36,7 +39,10 @@
     json-write
     json-write-relaxed
   )
-  (import (rnrs) (peg))
+  (import
+    (rnrs)
+    (com scottdial pegpeg)
+  )
 
   (define json-parser
     (peg-parser
@@ -296,9 +302,16 @@
       (apply json-write-relaxed `(,value . ,args))))
 )
 
-(library (json tests)
-  (export do-tests)
-  (import (rnrs) (rnrs eval) (srfi-78) (json))
+(library (com scottdial json tests)
+  (export
+    do-tests
+  )
+  (import
+    (rnrs)
+    (rnrs eval)
+    (srfi-78)
+    (com scottdial json)
+  )
 
   (define pass1
 "[
@@ -415,7 +428,7 @@
                 (lambda (e)
                   (return 'exception))
                 (lambda ()
-                  (eval x (environment '(rnrs) '(json)))
+                  (eval x (environment '(rnrs) '(com scottdial json)))
                   'no-exception))))))
       (define-syntax check-parse-error
         (lambda (x)

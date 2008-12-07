@@ -30,7 +30,10 @@
 ;;;     "Packrat Parsers Can Support Left Recursion". Viewpoints Research
 ;;;     Institute: http://www.vpri.org/pdf/tr2007002_packrat.pdf
 
-(library (peg helpers)
+(load "srfi-42.ss")
+(load "srfi-78.ss")
+
+(library (com scottdial pegpeg helpers)
   (export
     peg-trace
     printf
@@ -114,7 +117,7 @@
             #f)))))
 )
 
-(library (peg)
+(library (com scottdial pegpeg)
   (export
     peg-parser
 
@@ -136,7 +139,10 @@
     peg-parse-error-message
     peg-parse-error-stream
   )
-  (import (rnrs) (peg helpers))
+  (import
+    (rnrs)
+    (com scottdial pegpeg helpers)
+  )
 
   (define-record-type peg-stream
     (nongenerative peg-stream-754e2297-a607-4cc3-b384-cadb3a3c670a)
@@ -835,9 +841,17 @@
          (peg-result-stream result))]))
 )
 
-(library (peg tests)
-  (export do-tests)
-  (import (rnrs) (rnrs eval) (srfi-78) (srfi-42) (peg))
+(library (com scottdial pegpeg tests)
+  (export
+    do-tests
+  )
+  (import
+    (rnrs)
+    (rnrs eval)
+    (srfi-42)
+    (srfi-78)
+    (com scottdial pegpeg)
+  )
 
   (define parse-string
     (lambda (parser input)
@@ -928,7 +942,7 @@
                     [(syntax-violation? e) (return 'syntax-violation)]
                     [else (return e)]))
                 (lambda ()
-                  (eval x (environment '(rnrs) '(peg)))))))))
+                  (eval x (environment '(rnrs) '(com scottdial pegpeg)))))))))
       (define-syntax check-syntax
         (syntax-rules ()
           [(_ is-good x)

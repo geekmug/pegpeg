@@ -62,7 +62,9 @@
     :while
     :until
   )
-  (import (rnrs))
+  (import
+    (rnrs)
+  )
 
   (define-syntax nested
     (lambda (x) (error 'nested "misplaced identifier")))

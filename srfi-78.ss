@@ -39,6 +39,8 @@
 ; PLT:      (require (lib "23.ss" "srfi") (lib "42.ss" "srfi"))
 ; Scheme48: ,open srfi-23 srfi-42 
 
+(load "srfi-42.ss")
+
 (library (srfi-78)
   (export
     check
@@ -48,7 +50,10 @@
     check-reset!
     check-passed?
   )
-  (import (rnrs) (srfi-42))
+  (import
+    (rnrs)
+    (srfi-42)
+  )
 
 ; -- utilities --
 
