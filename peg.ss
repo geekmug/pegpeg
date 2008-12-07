@@ -1,7 +1,7 @@
 ;;; Parsing Expression Grammar Parsing Expression Generator (PEGPEG)
 ;;; Copyright (c) 2008 Scott A. Dial (scott@scottdial.com)
 ;;; All rights reserved.
-;;; 
+;;;
 ;;; Redistribution and use in source and binary forms, with or without
 ;;; modification, are permitted provided that the following conditions
 ;;; are met:
@@ -191,12 +191,16 @@
   (define generator->peg-stream
     (case-lambda
       [(generator)
-       (~generator->peg-stream generator "<?>" 1 1)]
+       (~generator->peg-stream generator "<?>" 1 1 8)]
+      [(generator tab-size)
+       (~generator->peg-stream generator "<?>" 1 1 tab-size)]
       [(generator name line col)
-       (~generator->peg-stream generator name line col)]))
+       (~generator->peg-stream generator name line col 8)]
+      [(generator name line col tab-size)
+       (~generator->peg-stream generator name line col tab-size)]))
 
   (define ~generator->peg-stream
-    (lambda (generator name line col)
+    (lambda (generator name line col tab-size)
       (let ([value (generator)])
         (let ([ps (make-peg-stream value #f name line col)])
           (peg-stream-next-set! ps
@@ -205,9 +209,9 @@
                             (cond
                               [(eof-object? value) (values line col)]
                               [(char=? value #\newline) (values (+ line 1) 1)]
-                              [(char=? value #\tab) (values line (+ col 8))]
+                              [(char=? value #\tab) (values line (+ col tab-size))]
                               [else (values line (+ col 1 ))])])
-                (let ([nps (~generator->peg-stream generator name line col)])
+                (let ([nps (~generator->peg-stream generator name line col tab-size)])
                   (peg-stream-next-set! ps (lambda () nps))
                   nps))))
           ps))))
@@ -681,7 +685,7 @@
                   (char=? v nt-expr))
                 #,(string-append
                     "unexpected end-of-file, expected: "
-                    (object->string (syntax->datum #'nt-expr))) 
+                    (object->string (syntax->datum #'nt-expr)))
                 #,(string-append
                     "unexpected value, expected: "
                     (object->string (syntax->datum #'nt-expr))))]
@@ -717,7 +721,7 @@
                   (eqv? v nt-expr))
                 #,(string-append
                     "unexpected end-of-file, expected: "
-                    (object->string (syntax->datum #'nt-expr))) 
+                    (object->string (syntax->datum #'nt-expr)))
                 #,(string-append
                     "unexpected value, expected: "
                     (object->string (syntax->datum #'nt-expr))))])])))
@@ -945,8 +949,9 @@
 
       ; no duplicate bindings
       (check-syntax #f '(peg-parser [(a S) (a S)] (S ("a" #t))))
-      (check-syntax #t '(peg-parser [(a S) (b S)] (S ("a" #t))))
       (check-syntax #f '(peg-parser [(a S) (b S) (a S)] (S ("a" #t))))
+      (check-syntax #t '(peg-parser [(a S) (b S)] (S ("a" #t))))
+      (check-syntax #f '(peg-parser [(a S) (b S) (c S)] (S ("a" #t))))
 
       ; no bindings that end with digits
       (check-syntax #f '(peg-parser [(a0 S)] (S ("a" #t))))
