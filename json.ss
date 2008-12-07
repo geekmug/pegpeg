@@ -24,7 +24,8 @@
 ;;; POSSIBILITY OF SUCH DAMAGE.
 
 ;;; References:
-;;; RFC 4627, http://www.ietf.org/rfc/rfc4627.txt?number=4627
+;;; RFC 4627 "The application/json Media Type for JavaScript Object Notation
+;;;   (JSON)", http://www.ietf.org/rfc/rfc4627.txt?number=4627
 ;;; JSON_checker Test Suite, http://www.json.org/JSON_checker/
 
 (library (json)
