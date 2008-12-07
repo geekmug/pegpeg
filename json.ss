@@ -78,7 +78,7 @@
                  [(null? str) (reverse decoded)]
                  [(integer? (car str))
                   (if (or (not (pair? (cdr str))) (not (integer? (cadr str))))
-                    (error 'peg-parser
+                    (error 'json-parser
                       "invalid surrogate pair in decoding string"))
                   (loop (cddr str)
                     (cons 
