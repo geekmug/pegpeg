@@ -951,7 +951,7 @@
       (check-syntax #f '(peg-parser [(a S) (a S)] (S ("a" #t))))
       (check-syntax #f '(peg-parser [(a S) (b S) (a S)] (S ("a" #t))))
       (check-syntax #t '(peg-parser [(a S) (b S)] (S ("a" #t))))
-      (check-syntax #f '(peg-parser [(a S) (b S) (c S)] (S ("a" #t))))
+      (check-syntax #t '(peg-parser [(a S) (b S) (c S)] (S ("a" #t))))
 
       ; no bindings that end with digits
       (check-syntax #f '(peg-parser [(a0 S)] (S ("a" #t))))
@@ -965,3 +965,5 @@
       (expr-tests)
     ))
 )
+
+(import (peg tests)) (do-tests)
