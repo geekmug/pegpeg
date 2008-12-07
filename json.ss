@@ -71,7 +71,22 @@
         [("\"" (* strchar) "\"")
          (if (peg-unmatched? strchar)
            ""
-           (list->string strchar))])
+           (list->string
+             (let loop ([str strchar] [decoded '()])
+               (cond
+                 [(null? str) (reverse decoded)]
+                 [(integer? (car str))
+                  (if (or (not (pair? (cdr str))) (not (integer? (cadr str))))
+                    (error 'peg-parser
+                      "invalid surrogate pair in decoding string"))
+                  (loop (cddr str)
+                    (cons 
+                      (integer->char
+                        (+ (bitwise-arithmetic-shift-left
+                             (- (car str) #xDB00) 10)
+                           (- (cadr str) #xDC00)))
+                      decoded))]
+                 [else (loop (cdr str) (cons (car str) decoded))]))))])
       (StringChar
         [((! (/ "\"" "\\")) (c <- %)) (car c)]
         ["\\\"" #\"]
@@ -83,11 +98,15 @@
         ["\\r" (integer->char 13)] ; carriage return
         ["\\t" (integer->char 9)]  ; horizontal tab
         [("\\u" hd1 hd2 hd3 hd4)
-         (integer->char
-           (+ (bitwise-arithmetic-shift-left hd1 12)
-              (bitwise-arithmetic-shift-left hd2  8)
-              (bitwise-arithmetic-shift-left hd3  4)
-              hd4))])
+         (let ([v (+ (bitwise-arithmetic-shift-left hd1 12)
+                     (bitwise-arithmetic-shift-left hd2  8)
+                     (bitwise-arithmetic-shift-left hd3  4)
+                     hd4)])
+           ; we'll decode surrogate pairs later, when we have the whole pair
+           (if (or (and (>= v #xD800) (<= v #xDBFF))
+                   (and (>= v #xDC00) (<= v #xDFFF)))
+             v
+             (integer->char v)))])
       (HexDigit
         [(digit <- ("0" - "9"))
          (- (char->integer (car digit)) (char->integer #\0))]
@@ -193,13 +212,27 @@
               [(= d #x0D) (display "\\r" port)]  ; carriage return
               [(= d #x09) (display "\\t" port)]  ; tab
               [else
-               (if (> d #xFFFF)
-                 (error 'escape-char "unable to escape a character" c))
                (display "\\u" port)
-               (display (hex-char (bitwise-and d #xF000)) port)
-               (display (hex-char (bitwise-and d #x0F00)) port)
-               (display (hex-char (bitwise-and d #x00F0)) port)
-               (display (hex-char (bitwise-and d #x000F)) port)]))))
+               (if (> d #xFFFF) ; requires a surrogate pair
+                 (let* ([v  (- d #x10000)]
+                        [msb (bitwise-arithmetic-shift-right v 10)]
+                        [lsb (bitwise-and v #x3FF)]
+                        [d1 (+ #xD800 msb)]
+                        [d2 (+ #xDC00 lsb)])
+                   (display (hex-char (bitwise-and d1 #xF000)) port)
+                   (display (hex-char (bitwise-and d1 #x0F00)) port)
+                   (display (hex-char (bitwise-and d1 #x00F0)) port)
+                   (display (hex-char (bitwise-and d1 #x000F)) port)
+                   (display "\\u" port)
+                   (display (hex-char (bitwise-and d2 #xF000)) port)
+                   (display (hex-char (bitwise-and d2 #x0F00)) port)
+                   (display (hex-char (bitwise-and d2 #x00F0)) port)
+                   (display (hex-char (bitwise-and d2 #x000F)) port))
+                 (begin
+                   (display (hex-char (bitwise-and d #xF000)) port)
+                   (display (hex-char (bitwise-and d #x0F00)) port)
+                   (display (hex-char (bitwise-and d #x00F0)) port)
+                   (display (hex-char (bitwise-and d #x000F)) port)))]))))
       (display "\"" port)
       (let loop ([ls (string->list str)])
         (if (not (null? ls))
@@ -369,6 +402,8 @@
   (define fail32 "{\"Comma instead if closing brace\": true,")
   (define fail33 "[\"mismatch\"}")
 
+  (define unicode1 "[\"\\uDBFF\\uDFFD\"]")
+
   (define json-checker-tests
     (lambda ()
       (define safe-eval
@@ -446,7 +481,9 @@
       (check-parse-error #t fail30)
       (check-parse-error #t fail31)
       (check-parse-error #t fail32)
-      (check-parse-error #t fail33)))
+      (check-parse-error #t fail33)
+
+      (check-parse-error #f unicode1)))
 
   (define roundtrip-write-tests
     (lambda ()
@@ -472,7 +509,9 @@
       (check-write fail10)
       (check-write fail18)
       (check-write fail25)
-      (check-write fail27)))
+      (check-write fail27)
+
+      (check-write unicode1)))
 
   (define do-tests
     (lambda ()
