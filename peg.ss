@@ -965,5 +965,3 @@
       (expr-tests)
     ))
 )
-
-(import (peg tests)) (do-tests)
