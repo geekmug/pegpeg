@@ -23,14 +23,29 @@
 ;;; ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 ;;; POSSIBILITY OF SUCH DAMAGE.
 
+;;; References:
+;;; RFC 4627, http://www.ietf.org/rfc/rfc4627.txt?number=4627
+;;; JSON_checker Test Suite, http://www.json.org/JSON_checker/
+
 (library (json)
   (export
     json-parser
     json-read
+    json-read-ex
     json-write
-    json-do-tests
   )
   (import (rnrs) (peg))
+
+  ; RFC requires string to only contain characters in
+  ;  {0x20-21, 0x23-5B, 0x5D-10FFFF} 
+  (define json-valid-char?
+    (lambda (c)
+      (or (and (char>=? (integer->char #x20) c)
+               (char<=? (integer->char #x21) c))
+          (and (char>=? (integer->char #x23) c)
+               (char<=? (integer->char #x5B) c))
+          (and (char>=? (integer->char #x5D) c)
+               (char<=? (integer->char #x10FFFF) c)))))
 
   (define json-parser
     (peg-parser
@@ -38,6 +53,8 @@
        (num Number) (strchar StringChar) (hd HexDigit) (int Integer)
        (frac Fraction) (exp Exponent) (dgt Digit) (nzdgt NonzeroDigit)
        (ws Whitespace)]
+      (Document
+        [((* ws) val (* ws)) val])
       (Value
         ["true" #t]
         ["false" #f]
@@ -47,7 +64,7 @@
         [obj obj]
         [ary ary])
       (Object
-        [("{" (* ws) (? pr1 (* (* ws) "," (* ws) pr2)) (* ws) "}")
+        [("{" (* ws) (? pr1 (* (* ws) "," (* ws) pr2)) (? (* ws) ",") (* ws) "}")
          (cond
            [(peg-unmatched? pr1) '()]
            [(peg-unmatched? pr2) `(,pr1)]
@@ -55,7 +72,7 @@
       (Pair
         [(str (* ws) ":" (* ws) val) `(,str . ,val)])
       (Array
-        [("[" (* ws) (? val1 (* (* ws) "," (* ws) val2)) (* ws) "]")
+        [("[" (* ws) (? val1 (* (* ws) "," (* ws) val2)) (? (* ws) ",") (* ws) "]")
          (cond
            [(peg-unmatched? val1) (vector)]
            [(peg-unmatched? val2) (list->vector `(,val1))]
@@ -146,6 +163,13 @@
       [(port/str name) (~json-read port/str name 1 1)]
       [(port/str name line col) (~json-read port/str name line col)]))
 
+  (define json-read-ex
+    (lambda x
+      (let ([result (apply json-read x)])
+        (if (peg-parse-error? result)
+          (error 'json-read-ex (peg-parse-error-message result))
+          result))))
+
   (define ~json-write
     (lambda (value port)
       (cond
@@ -188,24 +212,196 @@
     (case-lambda
       [(value) (~json-write value (current-output-port))]
       [(value port) (~json-write value port)]))
-
-  (define json-do-tests
-    (lambda ()
-      (json-read (open-file-input-port "tests/1600.js") "tests/1600.js" 1 1)
-      (json-read (open-file-input-port "tests/JSON_checker/pass2.json") "pass2.json" 1 1)
-      (json-read (open-file-input-port "tests/JSON_checker/pass3.json") "pass3.json" 1 1)
-; XXX: Needs UTF-16 support
-;    (json-read (open-file-input-port "tests/JSON_checker/pass1.json") "pass1.json" 1 1)
-      #f))
 )
 
-(import (json))
-(define json-do-tests
-  (lambda ()
-    (json-read (open-file-input-port "tests/1600.js") "1600.js" 1 1)
-    (json-read (open-file-input-port "tests/JSON_checker/pass2.json") "pass2.json" 1 1)
-    (json-read (open-file-input-port "tests/JSON_checker/pass3.json") "pass3.json" 1 1)
-; XXX: Needs UTF-16 support
-;    (json-read (open-file-input-port "tests/JSON_checker/pass1.json") "pass1.json" 1 1)
-    #f
-    ))
+(library (json tests)
+  (export do-tests)
+  (import (rnrs) (rnrs eval) (srfi-78) (json))
+
+  (define pass1
+"[
+    \"JSON Test Pattern pass1\",
+    {\"object with 1 member\":[\"array with 1 element\"]},
+    {},
+    [],
+    -42,
+    true,
+    false,
+    null,
+    {
+        \"integer\": 1234567890,
+        \"real\": -9876.543210,
+        \"e\": 0.123456789e-12,
+        \"E\": 1.234567890E+34,
+        \"\":  23456789012E66,
+        \"zero\": 0,
+        \"one\": 1,
+        \"space\": \" \",
+        \"quote\": \"\\\"\",
+        \"backslash\": \"\\\\\",
+        \"controls\": \"\\b\\f\\n\\r\\t\",
+        \"slash\": \"/ & \\/\",
+        \"alpha\": \"abcdefghijklmnopqrstuvwyz\",
+        \"ALPHA\": \"ABCDEFGHIJKLMNOPQRSTUVWYZ\",
+        \"digit\": \"0123456789\",
+        \"0123456789\": \"digit\",
+        \"special\": \"`1~!@#$%^&*()_+-={':[,]}|;.</>?\",
+        \"hex\": \"\\u0123\\u4567\\u89AB\\uCDEF\\uabcd\\uef4A\",
+        \"true\": true,
+        \"false\": false,
+        \"null\": null,
+        \"array\":[  ],
+        \"object\":{  },
+        \"address\": \"50 St. James Street\",
+        \"url\": \"http://www.JSON.org/\",
+        \"comment\": \"// /* <!-- --\",
+        \"# -- --> */\": \" \",
+        \" s p a c e d \" :[1,2 , 3
+
+,
+
+4 , 5        ,          6           ,7        ],\"compact\":[1,2,3,4,5,6,7],
+        \"jsontext\": \"{\\\"object with 1 member\\\":[\\\"array with 1 element\\\"]}\",
+        \"quotes\": \"&#34; \\u0022 %22 0x22 034 &#x22;\",
+        \"\\/\\\\\\\"\\uCAFE\\uBABE\\uAB98\\uFCDE\\ubcda\\uef4A\\b\\f\\n\\r\\t`1~!@#$%^&*()_+-=[]{}|;:',./<>?\"
+: \"A key can be any string\"
+    },
+    0.5 ,98.6
+,
+99.44
+,
+
+1066,
+1e1,
+0.1e1,
+1e-1,
+1e00,2e+00,2e-00
+,\"rosebud\"]")
+  (define pass2 "[[[[[[[[[[[[[[[[[[[\"Not too deep\"]]]]]]]]]]]]]]]]]]]")
+  (define pass3
+"{
+    \"JSON Test Pattern pass3\": {
+        \"The outermost value\": \"must be an object or array.\",
+        \"In this test\": \"It is an object.\"
+    }
+}")
+  (define fail1
+    "\"A JSON payload should be an object or array, not a string.\"")
+  (define fail2 "[\"Unclosed array\"")
+  (define fail3 "{unquoted_key: \"keys must be quoted\"}")
+  (define fail4 "[\"extra comma\",]")
+  (define fail5 "[\"double extra comma\",,]")
+  (define fail6 "[   , \"<-- missing value\"]")
+  (define fail7 "[\"Comma after the close\"],")
+  (define fail8 "[\"Extra close\"]]")
+  (define fail9 "{\"Extra comma\": true,}")
+  (define fail10
+    "{\"Extra value after close\": true} \"misplaced quoted value\"")
+  (define fail11 "{\"Illegal expression\": 1 + 2}")
+  (define fail12 "{\"Illegal invocation\": alert()}")
+  (define fail13 "{\"Numbers cannot have leading zeroes\": 013}")
+  (define fail14 "{\"Numbers cannot be hex\": 0x14}")
+  (define fail15 "[\"Illegal backslash escape: \\x15\"]")
+  (define fail16 "[\\naked]")
+  (define fail17 "[\"Illegal backslash escape: \\017\"]")
+  (define fail18 "[[[[[[[[[[[[[[[[[[[[\"Too deep\"]]]]]]]]]]]]]]]]]]]]")
+  (define fail19 "{\"Missing colon\" null}")
+  (define fail20 "{\"Double colon\":: null}")
+  (define fail21 "{\"Comma instead of colon\", null}")
+  (define fail22 "[\"Colon instead of comma\": false]")
+  (define fail23 "[\"Bad value\", truth]")
+  (define fail24 "['single quote']")
+  (define fail25 "[\" tab character in  string  \"]")
+  (define fail26 "[\"tab\\   character\\   in\\  string\\  \"]")
+  (define fail27 "[\"line\nbreak\"]")
+  (define fail28 "[\"line\\\nbreak\"]")
+  (define fail29 "[0e]")
+  (define fail30 "[0e+]")
+  (define fail31 "[0e+-1]")
+  (define fail32 "{\"Comma instead if closing brace\": true,")
+  (define fail33 "[\"mismatch\"}")
+
+  (define json-checker-tests
+    (lambda ()
+      (define safe-eval
+        (lambda (x)
+          (call/cc
+            (lambda (return)
+              (with-exception-handler
+                (lambda (e)
+                  (return 'exception))
+                (lambda ()
+                  (eval x (environment '(rnrs) '(json)))
+                  'no-exception))))))
+      (define-syntax check-parse-error
+        (lambda (x)
+          (syntax-case x ()
+            [(_ is-bad input)
+             (if (syntax->datum #'is-bad)
+               #'(check (safe-eval (list 'json-read-ex input)) => 'exception)
+               #'(check (safe-eval (list 'json-read-ex input)) => 'no-exception))])))
+
+      (check-parse-error #f pass1)
+      (check-parse-error #f pass2)
+      (check-parse-error #f pass3)
+
+      ; Reader was deliberatley relaxed to accept any value.
+      (check-parse-error #f fail1)
+
+      (check-parse-error #t fail2)
+      (check-parse-error #t fail3)
+
+      ; Reader was deliberatley relaxed to allow trailing commas.
+      (check-parse-error #f fail4)
+
+      (check-parse-error #t fail5)
+      (check-parse-error #t fail6)
+
+      ; Reader was deliberatley relaxed to ignore trailing junk.
+      (check-parse-error #f fail7)
+      (check-parse-error #f fail8)
+
+      ; Reader was deliberatley relaxed to allow trailing commas.
+      (check-parse-error #f fail9)
+
+      ; Reader was deliberatley relaxed to ignore trailing junk.
+      (check-parse-error #f fail10)
+
+      (check-parse-error #t fail11)
+      (check-parse-error #t fail12)
+      (check-parse-error #t fail13)
+      (check-parse-error #t fail14)
+      (check-parse-error #t fail15)
+      (check-parse-error #t fail16)
+      (check-parse-error #t fail17)
+
+      ; Reader has no depth limits.
+      (check-parse-error #f fail18)
+
+      (check-parse-error #t fail19)
+      (check-parse-error #t fail20)
+      (check-parse-error #t fail21)
+      (check-parse-error #t fail22)
+      (check-parse-error #t fail23)
+      (check-parse-error #t fail24)
+
+      ; Reader allows any valid host-language character in a string 
+      (check-parse-error #f fail25)
+
+      (check-parse-error #t fail26)
+
+      ; Reader allows any valid host-language character in a string 
+      (check-parse-error #f fail27)
+
+      (check-parse-error #t fail28)
+      (check-parse-error #t fail29)
+      (check-parse-error #t fail30)
+      (check-parse-error #t fail31)
+      (check-parse-error #t fail32)
+      (check-parse-error #t fail33)))
+
+  (define do-tests
+    (lambda ()
+      (check-set-mode! 'report-failed)
+      (json-checker-tests)))
+)
