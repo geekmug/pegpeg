@@ -33,26 +33,16 @@
     json-read
     json-read-ex
     json-write
+    json-write-relaxed
   )
   (import (rnrs) (peg))
-
-  ; RFC requires string to only contain characters in
-  ;  {0x20-21, 0x23-5B, 0x5D-10FFFF} 
-  (define json-valid-char?
-    (lambda (c)
-      (or (and (char>=? (integer->char #x20) c)
-               (char<=? (integer->char #x21) c))
-          (and (char>=? (integer->char #x23) c)
-               (char<=? (integer->char #x5B) c))
-          (and (char>=? (integer->char #x5D) c)
-               (char<=? (integer->char #x10FFFF) c)))))
 
   (define json-parser
     (peg-parser
       [(obj Object) (pr Pair) (ary Array) (val Value) (str String)
-       (num Number) (strchar StringChar) (hd HexDigit) (int Integer)
-       (frac Fraction) (exp Exponent) (dgt Digit) (nzdgt NonzeroDigit)
-       (ws Whitespace)]
+       (num Number) (strchar StringChar) (hd HexDigit) (unum UnsignedNumber)
+       (int Integer) (frac Fraction) (exp Exponent) (dgt Digit)
+       (nzdgt NonzeroDigit) (ws Whitespace)]
       (Document
         [((* ws) val (* ws)) val])
       (Value
@@ -94,9 +84,9 @@
         ["\\t" (integer->char 9)]  ; horizontal tab
         [("\\u" hd1 hd2 hd3 hd4)
          (integer->char
-           (+ (fxarithmetic-shift-left hd1 12)
-              (fxarithmetic-shift-left hd2  8)
-              (fxarithmetic-shift-left hd3  4)
+           (+ (bitwise-arithmetic-shift-left hd1 12)
+              (bitwise-arithmetic-shift-left hd2  8)
+              (bitwise-arithmetic-shift-left hd3  4)
               hd4))])
       (HexDigit
         [(digit <- ("0" - "9"))
@@ -105,17 +95,17 @@
         [(/ "c" "C") 12] [(/ "d" "D") 13]
         [(/ "e" "E") 14] [(/ "f" "F") 15])
       (Number
-        [(int frac exp) (* (+ int frac) (expt 10 exp))]
+        [("-" unum) (- unum)]
+        [unum unum])
+      (UnsignedNumber
+        [(int frac exp) (inexact (* (+ int frac) (expt 10 exp)))]
         [(int frac) (+ int frac)]
-        [(int exp) (* int (expt 10 exp))]
+        [(int exp) (inexact (* int (expt 10 exp)))]
         [int int])
       (Integer
         [(nzdgt (+ dgt))
          (string->number (list->string `(,nzdgt ,@dgt)))]
-        [dgt (string->number (list->string `(,dgt)))]
-        [("-" nzdgt (+ dgt))
-         (- (string->number (list->string `(,nzdgt ,@dgt))))]
-        [("-" dgt) (- (string->number (list->string `(,dgt))))])
+        [dgt (string->number (list->string `(,dgt)))])
       (Fraction
         [("." (+ dgt))
          (string->number (list->string `(#\. ,@dgt)))])
@@ -170,6 +160,54 @@
           (error 'json-read-ex (peg-parse-error-message result))
           result))))
 
+  (define write-string
+    (lambda (str port)
+      ; RFC requires string to only contain characters in
+      ;  {0x20-21, 0x23-5B, 0x5D-10FFFF} 
+      (define valid-char?
+        (lambda (c)
+          (let ([d (char->integer c)])
+            (or (and (<= #x20 d)
+                     (>= #x21 d))
+                ; #x2C = \
+                (and (<= #x23 d)
+                     (>= #x5B d))
+                ; #x5C = "
+                (and (<= #x5D d)
+                     (>= #x10FFFF d))))))
+      (define hex-char
+        (lambda (i)
+          (if (> i 9)
+            (integer->char (+ i (char->integer #\a)))
+            (integer->char (+ i (char->integer #\0))))))
+      (define escape-char
+        (lambda (c)
+          (let ([d (char->integer c)])
+            (cond
+              [(valid-char? c) (display c port)]
+              [(= d #x22) (display "\\\"" port)] ; "
+              [(= d #x5C) (display "\\\\" port)] ; \
+              [(= d #x08) (display "\\b" port)]  ; backspace
+              [(= d #x0C) (display "\\f" port)]  ; form feed
+              [(= d #x0A) (display "\\n" port)]  ; line feed
+              [(= d #x0D) (display "\\r" port)]  ; carriage return
+              [(= d #x09) (display "\\t" port)]  ; tab
+              [else
+               (if (> d #xFFFF)
+                 (error 'escape-char "unable to escape a character" c))
+               (display "\\u" port)
+               (display (hex-char (bitwise-and d #xF000)) port)
+               (display (hex-char (bitwise-and d #x0F00)) port)
+               (display (hex-char (bitwise-and d #x00F0)) port)
+               (display (hex-char (bitwise-and d #x000F)) port)]))))
+      (display "\"" port)
+      (let loop ([ls (string->list str)])
+        (if (not (null? ls))
+          (begin
+            (escape-char (car ls))
+            (loop (cdr ls)))))
+      (display "\"" port)))
+
   (define ~json-write
     (lambda (value port)
       (cond
@@ -180,9 +218,11 @@
            (display "true" port)
            (display "false" port))]
         [(number? value)
-         (display value port)]
+         (if (and (exact? value) (not (integer? value)))
+           (display (inexact value) port)
+           (display value port))]
         [(string? value)
-         (write value port)]
+         (write-string value port)]
         [(vector? value)
          (display "[" port)
          (let loop ([i 0])
@@ -190,7 +230,7 @@
              (begin
                (if (> i 0)
                  (display "," port))
-               (~json-write port (vector-ref value i))
+               (~json-write (vector-ref value i) port)
                (loop (+ i 1)))))
          (display "]" port)]
         [(list? value)
@@ -200,18 +240,26 @@
              (begin
                (if comma
                  (display "," port))
-               (~json-write port (caar elem))
+               (if (not (string? (caar elem)))
+                 (error 'json-write "invalid object key" (caar elem)))
+               (~json-write (caar elem) port)
                (display ":" port)
-               (~json-write port (cdar elem))
+               (~json-write (cdar elem) port)
                (loop (cdr elem) #t))))
          (display "}" port)]
         [else
          (error 'json-write "unsupported scheme value: ~s" value)])))
 
-  (define json-write
+  (define json-write-relaxed
     (case-lambda
       [(value) (~json-write value (current-output-port))]
       [(value port) (~json-write value port)]))
+
+  (define json-write
+    (lambda (value . args)
+      (if (not (or (list? value) (vector? value)))
+        (error 'json-write "invalid root JSON object" value))
+      (apply json-write-relaxed `(,value . ,args))))
 )
 
 (library (json tests)
@@ -400,8 +448,35 @@
       (check-parse-error #t fail32)
       (check-parse-error #t fail33)))
 
+  (define roundtrip-write-tests
+    (lambda ()
+      (define-syntax check-write
+        (syntax-rules ()
+          [(_ str)
+           (let ([value (json-read str)])
+             (check
+               (json-read (call-with-string-output-port
+                            (lambda (port)
+                              (json-write (json-read str) port))))
+               => value))]))
+
+      ; Can't roundtrip floats without representation errors
+      ;(check-write pass1)
+      (check-write pass2)
+      (check-write pass3)
+
+      (check-write fail4)
+      (check-write fail7)
+      (check-write fail8)
+      (check-write fail9)
+      (check-write fail10)
+      (check-write fail18)
+      (check-write fail25)
+      (check-write fail27)))
+
   (define do-tests
     (lambda ()
       (check-set-mode! 'report-failed)
-      (json-checker-tests)))
+      (json-checker-tests)
+      (roundtrip-write-tests)))
 )
