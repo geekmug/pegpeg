@@ -198,7 +198,7 @@
       (define hex-char
         (lambda (i)
           (if (> i 9)
-            (integer->char (+ i (char->integer #\a)))
+            (integer->char (+ i (char->integer #\A)))
             (integer->char (+ i (char->integer #\0))))))
       (define escape-char
         (lambda (c)
