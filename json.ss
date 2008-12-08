@@ -67,15 +67,27 @@
         [obj obj]
         [ary ary])
       (Object
-        [("{" (* ws) (? pr1 (* (* ws) "," (* ws) pr2)) (? (* ws) ",") (* ws) "}")
-         (cond
-           [(peg-unmatched? pr1) '()]
-           [(peg-unmatched? pr2) `(,pr1)]
-           [else `(,pr1 ,@pr2)])])
+        [("{" (* ws)
+              (? pr1 (* (* ws) "," (* ws) pr2))
+              (? (* ws) ",") (* ws)
+          "}")
+         (let ([ht (make-hashtable string-hash string=?)])
+           (cond
+             [(peg-unmatched? pr1) ht]
+             [(peg-unmatched? pr2)
+              (hashtable-set! ht (car pr1) (cdr pr1))
+              ht]
+             [else
+              (hashtable-set! ht (car pr1) (cdr pr1))
+              (map (lambda (pr) (hashtable-set! ht (car pr) (cdr pr))) pr2)
+              ht]))])
       (Pair
         [(str (* ws) ":" (* ws) val) `(,str . ,val)])
       (Array
-        [("[" (* ws) (? val1 (* (* ws) "," (* ws) val2)) (? (* ws) ",") (* ws) "]")
+        [("[" (* ws)
+              (? val1 (* (* ws) "," (* ws) val2))
+              (? (* ws) ",") (* ws)
+          "]")
          (cond
            [(peg-unmatched? val1) (vector)]
            [(peg-unmatched? val2) (vector val1)]
@@ -279,19 +291,22 @@
                (~json-write (vector-ref value i) port)
                (loop (+ i 1)))))
          (display "]" port)]
-        [(list? value)
+        [(hashtable? value)
          (display "{" port)
-         (let loop ([elem value] [comma #f])
-           (if (not (null? elem))
-             (begin
-               (if comma
-                 (display "," port))
-               (if (not (string? (caar elem)))
-                 (error 'json-write "invalid object key" (caar elem)))
-               (~json-write (caar elem) port)
-               (display ":" port)
-               (~json-write (cdar elem) port)
-               (loop (cdr elem) #t))))
+         (let-values ([(keys values) (hashtable-entries value)])
+           (let loop ([i 0])
+             (if (< i (vector-length keys))
+               (begin
+                 (if (> i 0)
+                   (display "," port))
+                 (let ([key (vector-ref keys i)]
+                       [value (vector-ref values i)])
+                   (if (not (string? key))
+                     (error 'json-write "invalid object key" (car keys)))
+                   (~json-write key port)
+                   (display ":" port)
+                   (~json-write value port)
+                   (loop (+ i 1)))))))
          (display "}" port)]
         [else
          (error 'json-write "unsupported scheme value: ~s" value)])))
@@ -303,7 +318,7 @@
 
   (define json-write
     (lambda (value . args)
-      (if (not (or (list? value) (vector? value)))
+      (if (not (or (hashtable? value) (vector? value)))
         (error 'json-write "invalid root JSON object" value))
       (apply json-write-relaxed `(,value . ,args))))
 )
@@ -434,7 +449,7 @@
                 (lambda (e)
                   (return 'exception))
                 (lambda ()
-                  (eval x (environment '(rnrs) '(com scottdial json)))
+                  (eval x (environment '(rnrs) '(json)))
                   'no-exception))))))
       (define-syntax check-parse-error
         (lambda (x)
@@ -505,20 +520,52 @@
 
       (check-parse-error #f unicode1)))
 
+  (define json-equal?
+    (lambda (p q)
+      (cond
+        [(eq? (if #f #f) p) (eq? (if #f #f) q)]
+        [(boolean? p) (and (boolean? q) (eq? p q))]
+        [(number? p) (and (number? q) (= p q))]
+        [(string? p) (and (string? q) (string=? p q))]
+        [(vector? p) (and (vector? q) (vector-map json-equal? p q))]
+        [(hashtable? p)
+         (and (hashtable? q)
+           (call/cc
+             (lambda (return)
+               (let-values ([(p-keys p-values) (hashtable-entries p)])
+                 (vector-map
+                   (lambda (key value)
+                     (if (not (hashtable-contains? q key))
+                       (return #f))
+                     (if (not (json-equal? value (hashtable-ref q key #f)))
+                       (return #f)))
+                   p-keys p-values)
+                 #t))))]
+        [else #f])))
+
   (define roundtrip-write-tests
     (lambda ()
+      (define safe-eval
+        (lambda (x)
+          (call/cc
+            (lambda (return)
+              (with-exception-handler
+                (lambda (e)
+                  (return 'exception))
+                (lambda ()
+                  (eval x (environment '(rnrs) '(json)))))))))
       (define-syntax check-write
         (syntax-rules ()
           [(_ str)
-           (let ([value (json-read str)])
+           (let ([value (safe-eval `(json-read ,str))])
              (check
-               (json-read (call-with-string-output-port
-                            (lambda (port)
-                              (json-write (json-read str) port))))
-               => value))]))
+               (safe-eval
+                 `(json-read (call-with-string-output-port
+                               (lambda (port)
+                                 (json-write (json-read ,str) port)))))
+               (=> json-equal?) value))]))
 
-      ; Can't roundtrip floats without representation errors
-      ;(check-write pass1)
+      (check-write pass1)
       (check-write pass2)
       (check-write pass3)
 

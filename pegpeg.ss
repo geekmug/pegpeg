@@ -941,7 +941,7 @@
                     [(syntax-violation? e) (return 'syntax-violation)]
                     [else (return e)]))
                 (lambda ()
-                  (eval x (environment '(rnrs) '(com scottdial pegpeg)))))))))
+                  (eval x (environment '(rnrs) '(pegpeg)))))))))
       (define-syntax check-syntax
         (syntax-rules ()
           [(_ is-good x)
