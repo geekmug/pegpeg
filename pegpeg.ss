@@ -30,10 +30,7 @@
 ;;;     "Packrat Parsers Can Support Left Recursion". Viewpoints Research
 ;;;     Institute: http://www.vpri.org/pdf/tr2007002_packrat.pdf
 
-(load "srfi-42.ss")
-(load "srfi-78.ss")
-
-(library (com scottdial pegpeg helpers)
+(library (pegpeg helpers)
   (export
     peg-trace
     printf
@@ -42,7 +39,9 @@
     syntax-symbol=?
     peg-binding-name-match
   )
-  (import (rnrs))
+  (import
+    (rnrs)
+  )
 
   (define dofmt
     (lambda (p cntl args)
@@ -117,7 +116,7 @@
             #f)))))
 )
 
-(library (com scottdial pegpeg)
+(library (pegpeg)
   (export
     peg-parser
 
@@ -141,7 +140,7 @@
   )
   (import
     (rnrs)
-    (com scottdial pegpeg helpers)
+    (pegpeg helpers)
   )
 
   (define-record-type peg-stream
@@ -841,7 +840,7 @@
          (peg-result-stream result))]))
 )
 
-(library (com scottdial pegpeg tests)
+(library (pegpeg tests)
   (export
     do-tests
   )
@@ -850,7 +849,7 @@
     (rnrs eval)
     (srfi-42)
     (srfi-78)
-    (com scottdial pegpeg)
+    (pegpeg)
   )
 
   (define parse-string

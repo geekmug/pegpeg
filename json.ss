@@ -28,10 +28,16 @@
 ;;;   (JSON)", http://www.ietf.org/rfc/rfc4627.txt?number=4627
 ;;; JSON_checker Test Suite, http://www.json.org/JSON_checker/
 
-(load "pegpeg.ss")
-(load "srfi-78.ss")
+;;; Filename | Size | GCs | CPU Time | GC Time | Allocated | Reclaimed 
+;;;    25.js |   4k |   0 |     6 ms |    0 ms |   1614296 |         0
+;;;    50.js |   7k |   1 |    23 ms |   11 ms |   3218744 |   2716560
+;;;   100.js |  14k |   1 |    35 ms |   11 ms |   6456792 |   2715352
+;;;   200.js |  27k |   3 |   108 ms |   60 ms |  13053184 |   9201736
+;;;   400.js |  54k |   6 |   191 ms |   95 ms |  26725880 |  17851592
+;;;   800.js | 108k |  13 |   430 ms |  232 ms |  55993112 |  42396296
+;;;  1600.js | 216k |  29 |   903 ms |  491 ms | 122204472 |  93940232
 
-(library (com scottdial json)
+(library (json)
   (export
     json-parser
     json-read
@@ -41,7 +47,7 @@
   )
   (import
     (rnrs)
-    (com scottdial pegpeg)
+    (pegpeg)
   )
 
   (define json-parser
@@ -72,8 +78,8 @@
         [("[" (* ws) (? val1 (* (* ws) "," (* ws) val2)) (? (* ws) ",") (* ws) "]")
          (cond
            [(peg-unmatched? val1) (vector)]
-           [(peg-unmatched? val2) (list->vector `(,val1))]
-           [else (list->vector `(,val1 ,@val2))])])
+           [(peg-unmatched? val2) (vector val1)]
+           [else (list->vector (cons val1 val2))])])
       (String
         [("\"" (* strchar) "\"")
          (if (peg-unmatched? strchar)
@@ -302,7 +308,7 @@
       (apply json-write-relaxed `(,value . ,args))))
 )
 
-(library (com scottdial json tests)
+(library (json tests)
   (export
     do-tests
   )
@@ -310,7 +316,7 @@
     (rnrs)
     (rnrs eval)
     (srfi-78)
-    (com scottdial json)
+    (json)
   )
 
   (define pass1
