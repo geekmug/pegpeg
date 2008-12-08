@@ -57,7 +57,7 @@
        (int Integer) (frac Fraction) (exp Exponent) (dgt Digit)
        (nzdgt NonzeroDigit) (ws Whitespace)]
       (Document
-        [((* ws) val (* ws)) val])
+        [((* ws) val) val])
       (Value
         ["true" #t]
         ["false" #f]
@@ -159,8 +159,7 @@
         [((/ "e-" "E-") (+ dgt))
          (- (string->number (list->string dgt)))])
       (Digit
-        ["0" #\0]
-        [nzdgt nzdgt])
+        [(digit <- ("0" - "9")) (car digit)])
       (NonzeroDigit
         [(digit <- ("1" - "9")) (car digit)])
       (Whitespace
@@ -309,7 +308,7 @@
                    (loop (+ i 1)))))))
          (display "}" port)]
         [else
-         (error 'json-write "unsupported scheme value: ~s" value)])))
+         (error 'json-write "unsupported scheme value" value)])))
 
   (define json-write-relaxed
     (case-lambda
