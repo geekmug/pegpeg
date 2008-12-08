@@ -140,7 +140,7 @@
   )
   (import
     (rnrs)
-    (pegpeg helpers)
+    (for (pegpeg helpers) run expand)
   )
 
   (define-record-type peg-stream
@@ -213,6 +213,7 @@
               (let-values ([(line col)
                             (cond
                               [(eof-object? value) (values line col)]
+                              [(char=? value #\return) (values line 1)]
                               [(char=? value #\newline) (values (+ line 1) 1)]
                               [(char=? value #\tab) (values line (+ col tab-size))]
                               [else (values line (+ col 1 ))])])
