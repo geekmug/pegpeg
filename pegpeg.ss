@@ -366,7 +366,7 @@
                         (car (cdr (assq binding binding->stx))))))))
               bindings))))
       (syntax-case x ()
-        [(_ ((nt-sym* nt-type*) ...) (nt* (nt*-expr* nt*-body** ...) ...) ...)
+        [(_ ((nt-sym* nt-type*) ...) (nt* (nt*-expr nt*-body* ...) ...) ...)
          (with-syntax ([nt-start
                         (syntax-case #'(nt* ...) ()
                           [(nt0 nt1 ...) #'nt0])])
@@ -377,7 +377,7 @@
                    (peg-trace-push "~s~%" 'nt*)
                    (let ([result
                           ((peg-nt ((nt-sym* nt-type*) ...)
-                             (nt*-expr* (let () nt*-body** ...)) ...)
+                             (nt*-expr nt*-body* ...) ...)
                             stream)])
                      (peg-trace-pop "~a~%" (peg-trace-result->string result))
                      result)))
@@ -400,18 +400,56 @@
            (if (peg-parse-error? result)
              result
              (peg-body result nt-expr nt-body))))]
-      [(_ nt-bindings (nt-expr0 nt-body0) (nt-expr1 nt-body1) ...)
+      [(_ nt-bindings (nt-expr nt-guard nt-body))
+       (lambda (stream)
+         (let ([result (peg-expr nt-bindings nt-expr stream)])
+           (if (peg-parse-error? result)
+             result
+             ; XXX: reusing peg-body macro instead of just straight evaluating
+             (if ((peg-body-result-value (peg-body result nt-expr nt-guard)))
+               (peg-body result nt-expr nt-body)
+               (make-peg-parse-error #f
+                 "nonterminal guard failed"
+                 (peg-result-stream result))))))]
+      [(_ nt-bindings (nt-expr0 nt-body0) (nt-expr1 nt-body1 ...) ...)
        (lambda (stream)
          (let ([result0 (peg-expr nt-bindings nt-expr0 stream)])
+           (define next-result
+             (lambda ()
+               ((peg-nt nt-bindings (nt-expr1 nt-body1 ...) ...) stream)))
            (if (peg-parse-error? result0)
-             (let ([result1
-                    ((peg-nt nt-bindings (nt-expr1 nt-body1) ...) stream)])
+             (let ([result1 (next-result)])
                (if (peg-parse-error? result1)
                  (if (peg-parse-error>? result0 result1)
                    result0
                    result1)
                  result1))
-             (peg-body result0 nt-expr0 nt-body0))))]))
+             (peg-body result0 nt-expr0 nt-body0))))]
+      [(_ nt-bindings (nt-expr0 nt-guard0 nt-body0) (nt-expr1 nt-body1 ...) ...)
+       (lambda (stream)
+         (let ([result0 (peg-expr nt-bindings nt-expr0 stream)])
+           (define next-result
+             (lambda ()
+               ((peg-nt nt-bindings (nt-expr1 nt-body1 ...) ...) stream)))
+           (if (peg-parse-error? result0)
+             (let ([result1 (next-result)])
+               (if (peg-parse-error? result1)
+                 (if (peg-parse-error>? result0 result1)
+                   result0
+                   result1)
+                 result1))
+             ; XXX: reusing peg-body macro instead of just straight evaluating
+             (if ((peg-body-result-value (peg-body result0 nt-expr0 nt-guard0)))
+               (peg-body result0 nt-expr0 nt-body0)
+               (let ([result0 (make-peg-parse-error #f
+                                "nonterminal guard failed"
+                                (peg-result-stream result0))])
+                 (let ([result1 (next-result)])
+                   (if (peg-parse-error? result1)
+                     (if (peg-parse-error>? result0 result1)
+                       result0
+                       result1)
+                     result1)))))))]))
 
   (define peg-stream-get-range
     (lambda (start end)
@@ -930,6 +968,31 @@
           'b))
     ))
 
+  (define guard-tests
+    (lambda ()
+      (define palindrome-parser
+        (peg-parser
+          [(f Foo) (b Bar)]
+          (Foo
+            [(b1 " " b2)
+             (string=? b1 (list->string (reverse (string->list b2))))
+             'palindrome]
+            [(b1 " " b2)
+             'not-a-palindrome])
+          (Bar
+            [("a" b) (string-append "a" b)]
+            [("b" b) (string-append "b" b)]
+            ["a" "a"]
+            ["b" "b"])))
+
+      (check (parse-string palindrome-parser "aa bb") => 'not-a-palindrome)
+      (check (parse-string palindrome-parser "ab ab") => 'not-a-palindrome)
+      (check (parse-string palindrome-parser "ab ba") => 'palindrome)
+      (check (parse-string palindrome-parser "ba ab") => 'palindrome)
+      (check (parse-string palindrome-parser "a a") => 'palindrome)
+      (check (parse-string palindrome-parser "b b") => 'palindrome)
+    ))
+
   (define syntax-tests
     (lambda ()
       (define safe-eval
@@ -969,6 +1032,10 @@
 
       ; no bindings that end with digits
       (check-syntax #f '(peg-parser [(a0 S)] (S ("a" #t))))
+
+      ; optional guard expressions
+      (check-syntax #t '(peg-parser [] (S ("a" #t #t))))
+      (check-syntax #t '(peg-parser [] (S ("a" #f #t))))
     ))
 
   (define do-tests
@@ -977,5 +1044,6 @@
       (syntax-tests)
       (abc-tests)
       (expr-tests)
+      (guard-tests)
     ))
 )
