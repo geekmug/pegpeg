@@ -212,12 +212,18 @@
             (lambda ()
               (let-values ([(line col)
                             (cond
-                              [(eof-object? value) (values line col)]
-                              [(char=? value #\return) (values line 1)]
-                              [(char=? value #\newline) (values (+ line 1) 1)]
-                              [(char=? value #\tab) (values line (+ col tab-size))]
-                              [else (values line (+ col 1 ))])])
-                (let ([nps (~generator->peg-stream generator name line col tab-size)])
+                              [(eof-object? value)
+                               (values line col)]
+                              [(char=? value #\return)
+                               (values line 1)]
+                              [(char=? value #\newline)
+                               (values (+ line 1) 1)]
+                              [(char=? value #\tab)
+                               (values line (+ col tab-size))]
+                              [else
+                               (values line (+ col 1 ))])])
+                (let ([nps (~generator->peg-stream
+                             generator name line col tab-size)])
                   (peg-stream-next-set! ps (lambda () nps))
                   nps))))
           ps))))
@@ -411,7 +417,8 @@
                (make-peg-parse-error #f
                  "nonterminal guard failed"
                  (peg-result-stream result))))))]
-      [(_ nt-bindings (nt-expr0 nt-body0) (nt-expr1 nt-body1 ...) ...)
+      [(_ nt-bindings (nt-expr0 nt-body0)
+                      (nt-expr1 nt-body1 ...) ...)
        (lambda (stream)
          (let ([result0 (peg-expr nt-bindings nt-expr0 stream)])
            (define next-result
@@ -425,7 +432,8 @@
                    result1)
                  result1))
              (peg-body result0 nt-expr0 nt-body0))))]
-      [(_ nt-bindings (nt-expr0 nt-guard0 nt-body0) (nt-expr1 nt-body1 ...) ...)
+      [(_ nt-bindings (nt-expr0 nt-guard0 nt-body0)
+                      (nt-expr1 nt-body1 ...) ...)
        (lambda (stream)
          (let ([result0 (peg-expr nt-bindings nt-expr0 stream)])
            (define next-result
@@ -439,7 +447,8 @@
                    result1)
                  result1))
              ; XXX: reusing peg-body macro instead of just straight evaluating
-             (if ((peg-body-result-value (peg-body result0 nt-expr0 nt-guard0)))
+             (if ((peg-body-result-value
+                    (peg-body result0 nt-expr0 nt-guard0)))
                (peg-body result0 nt-expr0 nt-body0)
                (let ([result0 (make-peg-parse-error #f
                                 "nonterminal guard failed"
