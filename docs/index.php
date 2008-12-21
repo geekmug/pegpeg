@@ -365,14 +365,55 @@ string into a <? inline_code('peg-stream') ?>:
 
 <div class="section">4. PEG Actions</div>
 
-<div class="section">5. PEG Errors</div>
+<p>
+For each PEG expression matched in the final output, the right-hand side
+of the PEG clause (the action) will be executed. All nonterminals and symbols
+bound by assignment will be available in the scope of the action. The value
+returned by the action will be subsequently be bound to another symbol in
+another PEG clause or in the case of the start symbol returned as the value
+of the application of the <? inline_code('(peg-parser)') ?> form.
+</p>
 
-<? show_code('(define-record-type peg-parse-error
-  (fields
-    (immutable suberror) ; if there is an underlying error for this error
-    (immutable message)  ; error message for the user
-    (immutable stream)   ; peg-stream location of the error
-  ))'); ?>
+<div class="section">5. PEG Parse Errors</div>
+
+<p>
+Errors in the matching of a PEG expression are represented by
+<? inline_code('peg-parse-error') ?> records. Because of the choice operator,
+it can be unclear which error is <i>the</i> error to return, and the error
+which succeeded in matching the most of the input is used by this parser.
+</p>
+
+<div class="section">5.1 <? inline_code('(peg-parse-error? error)') ?></div>
+
+<p>
+Determine whether a scheme value is a parsing error.
+</p>
+
+<div class="section">5.2 <? inline_code('(peg-parse-error-suberror error)') ?></div>
+
+<p>
+Retrieve the parsing error which caused this parsing error. At the lowest
+level, the error will be some value or character not matching our grammar,
+however this is rarely useful to the end-user. The parser will then
+encapsulate that error as the error which caused a nonterminal to fail to
+match. This encapsulation will continue until we reach the top-most
+nonterminal that fails to match. Typically, this error is the error which will
+be most useful to report, however the encapsulation means it is still possible
+to introspect into how exactly that nonterminal failed to match.
+</p> 
+
+<div class="section">5.2 <? inline_code('(peg-parse-error-message error)') ?></div>
+
+<p>
+Retrieve the error message for this parsing error.
+</p> 
+
+<div class="section">5.2 <? inline_code('(peg-parse-error-stream error)') ?></div>
+
+<p>
+Retrieve the <? inline_code('peg-stream') ?> record for the input at which
+we had the parsing error.
+</p> 
 
 <div class="section">5. PEG Debugging</div>
 
