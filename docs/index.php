@@ -19,7 +19,23 @@ $geshi_inline->set_overall_class('inline');
 $geshi_inline->set_header_type(GESHI_HEADER_NONE);
 $geshi_inline->set_overall_style('font-family: monospace; font-size: 10pt;');
 
-$keywords = array('peg-parser', 'peg-trace');
+$keywords = array(
+'peg-parser',
+'peg-unmatched?',
+'peg-trace',
+'generator->peg-stream',
+'make-peg-stream',
+'peg-stream?',
+'peg-stream-value',
+'peg-stream-next',
+'peg-stream-name',
+'peg-stream-line',
+'peg-stream-col',
+'peg-parse-error?',
+'peg-parse-error-suberror',
+'peg-parse-error-message',
+'peg-parse-error-stream',
+);
 
 $geshi->add_keyword_group(2, 'color: #A00000;', false, $keywords);
 $geshi_inline->add_keyword_group(2, 'color: #A00000;', false, $keywords);
@@ -45,20 +61,24 @@ function inline_code($code) {
 <style type="text/css">
 <? echo $geshi->get_stylesheet(false);
    echo $geshi_inline->get_stylesheet(false); ?>
-body { font-family: sans-serif; width: 700px; background-color: #fcfcfc; font-size: small; }
+body { font-family: sans-serif; width: 700px; background-color: #fcfcfc;
+       font-size: small; }
 p { margin: 0; margin-left: 1em; margin-bottom: 1em; text-align: justify; }
 .header { font-size: large; font-weight: bold; text-align: center; }
+.subheader { font-size: small; font-weight: bold; text-align: center; }
 .section { font-size: large; font-weight: bold; padding: 0 0 1em 0; }
 .section .scheme.inline { font-size: large; }
 </style>
 </head>
 <body style="">
-<div class="header" style="font-size: large">Parsing Expression Grammar Parsing Expression Generator (PEGPEG)</div>
-<div class="header" style="font-size: small; padding-bottom: 1em">Scott A. Dial</div>
+<div class="header">Parsing Expression Grammar Parsing Expression Generator
+(PEGPEG)</div>
+<div class="subheader" style="padding-bottom: 1em">Scott A. Dial</div>
 
-<div class="section">1. PEG Parser: <? inline_code('(peg-parser [binding ...] nonterminal ...)') ?></div>
+<div class="section">1. PEG Parser:
+<? inline_code('(peg-parser [binding ...] nonterminal ...)') ?></div>
 
-<div>The <? inline_code("(peg-parser)") ?> syntatic form produces a procedure
+<div>The <? inline_code("peg-parser") ?> syntatic form produces a procedure
 of one argument, a thunk which is to yield the input one value at a time. The
 result of the application of the procedure is either the semantic value or
 a <? inline_code("peg-parse-error") ?> record describing why the input from
@@ -149,11 +169,12 @@ match at the end of input.
 <p>The "<? inline_code('(p0 p1 ...)') ?>" expression will match the
 subexpressions in-order.</p>
 
-<div class="section">2.4. Ordered-choice: <? inline_code('(/ p0 p1 ...)') ?></div>
+<div class="section">2.4. Ordered-choice:
+<? inline_code('(/ p0 p1 ...)') ?></div>
 
-<p>The "<? inline_code('(/ p0 p1 ...)') ?>" expression will attempt to match only
-one of the the subexpressions by trying each in-order. The expression fails only
-if all of the subexpressions fail.</p>
+<p>The "<? inline_code('(/ p0 p1 ...)') ?>" expression will attempt to match
+only one of the the subexpressions by trying each in-order. The expression fails
+only if all of the subexpressions fail.</p>
 
 <div class="section">2.5. Zero-or-More: <? inline_code('(* p0 p1 ...)') ?></div>
 
@@ -200,7 +221,8 @@ sequence "<? inline_code('(p0 p1 ...)') ?>" but succeed even if it does not
 match or consume any input.
 </p>
 
-<div class="section">2.8. And-predicate: <? inline_code('(& p0 p1 ...)') ?></div>
+<div class="section">2.8. And-predicate:
+<? inline_code('(& p0 p1 ...)') ?></div>
 
 <p>
 The "<? inline_code('(& p0 p1 ...)') ?>" expression will try to match the
@@ -229,7 +251,8 @@ consuming the return character. Although we have looked at the newline
 character, it will not be consumed.
 </p>
 
-<div class="section">2.9. Not-predicate: <? inline_code('(! p0 p1 ...)') ?></div>
+<div class="section">2.9. Not-predicate:
+<? inline_code('(! p0 p1 ...)') ?></div>
 
 <p>
 The "<? inline_code('(! p0 p1 ...)') ?>" expression will try to match the
@@ -238,14 +261,15 @@ The not-predicate can be used as to lookahead in the input stream before
 consuming any input to ensure the sequence does not match.
 </p>
 
-<div class="section">2.10. Assignment: <? inline_code('(s <- p0 p1 ...)') ?></div>
+<div class="section">2.10. Assignment:
+<? inline_code('(s <- p0 p1 ...)') ?></div>
 
 <p>
 The expression "<? inline_code('(s <- p0 p1 ...)') ?>" binds the sequence of
 values from the input stream that match the expression
-"<? inline_code('(p0 p1 ...)') ?>" to "<? inline_code('s') ?>". For instance, the
-expression "<? inline_code('(foobar <- (/ "foo" "bar")') ?>" will either bind
-"<? inline_code('foobar') ?>" to "<? inline_code('\'(#\f #\o #\o)') ?>" or
+"<? inline_code('(p0 p1 ...)') ?>" to "<? inline_code('s') ?>". For instance,
+the expression "<? inline_code('(foobar <- (/ "foo" "bar")') ?>" will either
+bind "<? inline_code('foobar') ?>" to "<? inline_code('\'(#\f #\o #\o)') ?>" or
 "<? inline_code('\'(#\b #\a #\r)') ?>". If the subexpression consumes no input,
 then the identifier will be bound to an empty list.
 </p>
@@ -258,9 +282,97 @@ character and the variable <? inline_code('c') ?> takes the list of matching
 characters for the subexpression, a list of one character.
 </p>
 
-<div class="section">3. PEG Actions</div>
+<div class="section">3. PEG Streams</div>
 
-<div class="section">4. PEG Errors</div>
+<p>
+Input streams are represented by a singly-linked list of records, which contains
+the sequence of input values as well as the revelant details about the source
+position.
+</p>
+
+<div class="section">3.1 <? inline_code('(peg-stream? stream)') ?></div>
+
+<p>
+Determine whether a scheme value is a stream.
+</p>
+
+<div class="section">3.2 <? inline_code('(peg-stream-value stream)') ?></div>
+
+<p>
+Retrieve the input value at this position of the input stream.
+</p>
+
+<div class="section">3.3 <? inline_code('(peg-stream-next stream)') ?></div>
+
+<p>
+Retrieve the <? inline_code('peg-stream') ?> record for the input immediately
+after this position.
+</p>
+
+<div class="section">3.4 <? inline_code('(peg-stream-name stream)') ?></div>
+
+<p>
+Retrieve the name of the input stream (e.g., the filename).
+</p>
+
+<div class="section">3.5 <? inline_code('(peg-stream-line stream)') ?></div>
+
+<p>
+Retrieve the line number on which this value appears in the input.
+</p>
+
+<div class="section">3.6 <? inline_code('(peg-stream-col stream)') ?></div>
+
+<p>
+Retrieve the column number on which this value appears in the input.
+</p> 
+
+<div class="section">3.7.
+<? inline_code('(generator->peg-stream thunk [name line col] [tab-size])') ?>
+</div>
+
+<p>
+For convenience, a thunk to stream constructor is provided. The first argument
+shall be a thunk that returns a single input value each time it is called. The
+thunk must return an <? inline_code('eof-object') ?> once all of the input has
+been consumed. The thunk may be called many times more than the length of the
+actual input; after all input is consumed, the thunk should continue to return
+an <? inline_code('eof-object') ?> repeatedly.
+</p>
+
+<p>
+Additionally, you can optionally provide a name for the stream along with the
+current position in the source. Finally, you can provide the number of columns
+of displacement for a tab character.
+</p>
+
+<p>
+The following example shows how to write a generic function to turn a scheme
+string into a <? inline_code('peg-stream') ?>:
+</p>
+
+<? show_code('(define string->peg-stream
+  (lambda (input)
+    (let ([test-string (string->list input)])
+      (define generator
+        (lambda ()
+          (if (null? test-string)
+            (eof-object)
+            (let ([c (car test-string)])
+              (set! test-string (cdr test-string))
+              c))))
+      (generator->peg-stream generator))))'); ?>
+
+<div class="section">4. PEG Actions</div>
+
+<div class="section">5. PEG Errors</div>
+
+<? show_code('(define-record-type peg-parse-error
+  (fields
+    (immutable suberror) ; if there is an underlying error for this error
+    (immutable message)  ; error message for the user
+    (immutable stream)   ; peg-stream location of the error
+  ))'); ?>
 
 <div class="section">5. PEG Debugging</div>
 

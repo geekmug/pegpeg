@@ -62,16 +62,16 @@ $language_data = array (
             'complex?', 'cond', 'cons', 'construct-identifier', 'cos',
             'current-input-port', 'current-output-port',
 
-            'define', 'define-syntax', 'delay', 'denominator', 'display', 'do',
+            'define', 'define-record-type', 'define-syntax', 'delay', 'denominator', 'display', 'do',
 
             'eof-object?', 'eq?', 'equal?', 'eqv?', 'even?', 'exact->inexact',
             'exact?', 'exp', 'expt', 'else',
 
-            'floor', 'for-each', 'force', 'free-identifer=?',
+            'fields', 'floor', 'for-each', 'force', 'free-identifer=?',
 
             'gcd', 'gen-counter', 'gen-loser', 'generate-identifier',
 
-            'identifier->symbol', 'identifier', 'if', 'imag-part', 'inexact->exact',
+            'identifier->symbol', 'identifier', 'if', 'imag-part', 'immutable', 'inexact->exact',
             'inexact?', 'input-port?', 'integer->char', 'integer?', 'integrate-system',
 
             'lambda', 'last-pair', 'lcm', 'length', 'let', 'let*', 'letrec',
@@ -80,7 +80,7 @@ $language_data = array (
 
             'magnitude', 'make-polar', 'make-promise', 'make-rectangular',
             'make-string', 'make-vector', 'map', 'map-streams', 'max', 'member',
-            'memq', 'memv', 'min', 'modulo',
+            'memq', 'memv', 'min', 'modulo', 'mutable',
 
             'negative', 'newline', 'nil', 'not', 'null?', 'number->string', 'number?',
             'numerator',
